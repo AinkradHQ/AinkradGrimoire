@@ -59,13 +59,43 @@ final class GrimoireModel {
     private(set) var usage: [UsageWindow] = []
     var isShowingSettings = false
     private let signals: PluginSignalEmitter?
+    private let apps: PluginAppLauncher?
+    /// Why the last "open in Rune" didn't happen; cleared on the next try.
+    private(set) var terminalProblem: String?
     private let sessionsRoot: URL
     private var activation: NSObjectProtocol?
 
-    init(settings: SettingsStore, sessionsRoot: URL = ClaudeSessions.defaultRoot, signals: PluginSignalEmitter? = nil) {
+    init(
+        settings: SettingsStore, sessionsRoot: URL = ClaudeSessions.defaultRoot, signals: PluginSignalEmitter? = nil,
+        apps: PluginAppLauncher? = nil
+    ) {
         self.settings = settings
         self.sessionsRoot = sessionsRoot
         self.signals = signals
+        self.apps = apps
+    }
+
+    /// Rune's app id and the launch kind it opens a shell for (see Rune's `RuneLaunch`).
+    static let terminalAppID = "rune"
+    static let openDirectoryKind = "openDirectory"
+
+    /// Opens Rune with a shell in `thread`'s folder — its worktree, when it has one.
+    func openTerminal(for thread: ClaudeSessionSummary) {
+        terminalProblem = nil
+        guard let apps,
+            let payload = AinkradLaunchIntent(kind: Self.openDirectoryKind, path: thread.workingDirectory).json
+        else { return }
+        guard let reporting = apps as? PluginAppLauncherResult else {
+            apps.open(appID: Self.terminalAppID, payload: payload)
+            return
+        }
+        switch reporting.openReportingOutcome(appID: Self.terminalAppID, payload: payload) {
+        case .opened: break
+        case .unknownApp: terminalProblem = "Install Rune from the Ainkrad store to open a terminal here."
+        case .disabled: terminalProblem = "Rune is turned off — enable it in Ainkrad to open a terminal here."
+        case .refused(let reason): terminalProblem = "Rune didn't open: \(reason)"
+        @unknown default: terminalProblem = "Rune didn't open."
+        }
     }
 
     /// Starts the refresh-on-activate observer, and the first load unless one
