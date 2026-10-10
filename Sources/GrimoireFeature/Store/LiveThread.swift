@@ -31,6 +31,10 @@ final class LiveThread {
     /// Called once the CLI names the session — a new thread's id until then is
     /// a placeholder.
     var onSessionID: ((String) -> Void)?
+    /// Called when the agent stops to ask for an approval.
+    var onNeedsYou: ((ApprovalRequest) -> Void)?
+    /// Called with the CLI's rate-limit windows whenever they're reported.
+    var onUsage: (([UsageWindow]) -> Void)?
 
     private var engine: HarnessEngine?
     private let makeEngine: () -> HarnessEngine
@@ -140,6 +144,9 @@ final class LiveThread {
         case .approval(let request):
             pendingApproval = request
             status = .needsYou
+            onNeedsYou?(request)
+        case .usage(let windows):
+            onUsage?(windows)
         case .permissionModeChanged(let mode):
             self.mode = mode
         case .modelChanged(let model):

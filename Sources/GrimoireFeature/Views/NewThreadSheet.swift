@@ -8,9 +8,9 @@ struct NewThreadSheet: View {
     let model: GrimoireModel
     let dismiss: () -> Void
     @State private var project: String
-    @State private var agentModel = "opus"
-    @State private var mode: PermissionMode = .ask
-    @State private var worktree = false
+    @State private var agentModel: String
+    @State private var mode: PermissionMode
+    @State private var worktree: Bool
     @State private var prompt = ""
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
@@ -18,7 +18,13 @@ struct NewThreadSheet: View {
     init(model: GrimoireModel, dismiss: @escaping () -> Void) {
         self.model = model
         self.dismiss = dismiss
-        _project = State(initialValue: model.selectedThread?.projectPath ?? model.mostRecentProject ?? "")
+        let project = model.selectedThread?.projectPath ?? model.mostRecentProject ?? ""
+        _project = State(initialValue: project)
+        _agentModel = State(initialValue: model.settings.defaultModel)
+        _mode = State(initialValue: model.settings.defaultMode)
+        _worktree = State(
+            initialValue: model.settings.worktreeByDefault
+                && FileManager.default.fileExists(atPath: (project as NSString).appendingPathComponent(".git")))
     }
 
     var body: some View {

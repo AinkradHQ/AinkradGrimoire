@@ -1,3 +1,4 @@
+import AinkradAppKit
 import AppKit
 import Foundation
 import Observation
@@ -19,7 +20,8 @@ final class GrimoireModel {
     /// The sidebar lists this many projects until "Show all".
     static let recentLimit = 10
 
-    private(set) var cli: CLIStatus = .checking
+    /// Settable for tests; the app only changes it in `reload()`.
+    var cli: CLIStatus = .checking
     /// Projects and threads as listed from the CLI's session files.
     private var listed: [ClaudeProject] = []
     /// Threads started here whose session the CLI hasn't written yet.
@@ -31,7 +33,11 @@ final class GrimoireModel {
     }
     private(set) var isLoading = false
     var selectedThreadID: String? {
-        didSet { if selectedThreadID != oldValue { loadSelectedThread() } }
+        didSet {
+            guard selectedThreadID != oldValue else { return }
+            isShowingSettings = false
+            loadSelectedThread()
+        }
     }
     /// The selected thread, ready to draw and talk to. `nil` while it loads.
     private(set) var current: LiveThread?
@@ -49,15 +55,21 @@ final class GrimoireModel {
     private var reviews: [String: ReviewModel] = [:]
 
     let settings: SettingsStore
+    /// The CLI's rate-limit windows, as last reported by any thread.
+    private(set) var usage: [UsageWindow] = []
+    var isShowingSettings = false
+    private let signals: PluginSignalEmitter?
     private let sessionsRoot: URL
     private var activation: NSObjectProtocol?
 
-    init(settings: SettingsStore, sessionsRoot: URL = ClaudeSessions.defaultRoot) {
+    init(settings: SettingsStore, sessionsRoot: URL = ClaudeSessions.defaultRoot, signals: PluginSignalEmitter? = nil) {
         self.settings = settings
         self.sessionsRoot = sessionsRoot
+        self.signals = signals
     }
 
-    /// Starts the first load and the refresh-on-activate observer. Idempotent.
+    /// Starts the refresh-on-activate observer, and the first load unless one
+    /// already happened. Idempotent.
     func start() {
         guard activation == nil else { return }
         activation = NotificationCenter.default.addObserver(
@@ -65,7 +77,7 @@ final class GrimoireModel {
         ) { [weak self] _ in
             Task { @MainActor in await self?.reload() }
         }
-        Task { await reload() }
+        if cli == .checking { Task { await reload() } }
     }
 
     func reload() async {
@@ -73,8 +85,9 @@ final class GrimoireModel {
         isLoading = true
         defer { isLoading = false }
         let root = sessionsRoot
+        let override = settings.cliPathOverride
         let (detected, listed) = await Task.detached(priority: .userInitiated) {
-            (Self.detectCLI(), ClaudeSessions.projects(root: root))
+            (Self.detectCLI(override: override), ClaudeSessions.projects(root: root))
         }.value
         cli = detected.status
         environment = detected.environment
@@ -97,12 +110,12 @@ final class GrimoireModel {
             id: placeholder, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: project,
             projectPath: project, worktree: worktreeName, title: String(prompt.prefix(80)), model: model,
             lastActivity: Date())
-        let live = LiveThread(
+        let live = makeLive(
             entries: [],
-            startOptions: EngineStartOptions(
+            options: EngineStartOptions(
                 workingDirectory: URL(fileURLWithPath: project), model: model, permissionMode: mode,
                 worktree: worktreeName),
-            model: model, makeEngine: { [weak self] in self?.makeEngine() ?? UnavailableEngine() })
+            model: model)
         live.onSessionID = { [weak self] id in self?.adopt(placeholder, as: id) }
         draftThreads.insert(draft, at: 0)
         liveThreads[placeholder] = live
@@ -119,11 +132,11 @@ final class GrimoireModel {
             id: placeholder, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: thread.workingDirectory,
             projectPath: thread.projectPath, worktree: thread.worktree, title: "Fork of \(thread.title)",
             gitBranch: thread.gitBranch, model: source.model, lastActivity: Date())
-        let live = LiveThread(
+        let live = makeLive(
             entries: source.entries,
-            startOptions: EngineStartOptions(
+            options: EngineStartOptions(
                 workingDirectory: URL(fileURLWithPath: thread.workingDirectory), resume: thread.id, fork: true),
-            model: source.model, makeEngine: { [weak self] in self?.makeEngine() ?? UnavailableEngine() })
+            model: source.model)
         live.onSessionID = { [weak self] id in self?.adopt(placeholder, as: id) }
         draftThreads.insert(draft, at: 0)
         liveThreads[placeholder] = live
@@ -182,11 +195,11 @@ final class GrimoireModel {
                 ThreadEntries.build((try? ClaudeSessions.history(of: thread.fileURL)) ?? [])
             }.value
             guard selectedThreadID == id else { return }
-            let live = LiveThread(
+            let live = makeLive(
                 entries: loaded,
-                startOptions: EngineStartOptions(
+                options: EngineStartOptions(
                     workingDirectory: URL(fileURLWithPath: thread.workingDirectory), resume: thread.id),
-                model: thread.model, makeEngine: { [weak self] in self?.makeEngine() ?? UnavailableEngine() })
+                model: thread.model)
             liveThreads[id] = live
             current = live
             isLoadingThread = false
@@ -215,6 +228,33 @@ final class GrimoireModel {
         let review = ReviewModel(live: live, workingDirectory: thread.workingDirectory, environment: environment)
         reviews[thread.id] = review
         return review
+    }
+
+    /// Every thread is made here, so each one reports usage and approvals.
+    private func makeLive(entries: [ThreadEntry], options: EngineStartOptions, model: String?) -> LiveThread {
+        let live = LiveThread(
+            entries: entries, startOptions: options, model: model,
+            makeEngine: { [weak self] in self?.makeEngine() ?? UnavailableEngine() })
+        live.onUsage = { [weak self] windows in self?.usage = windows }
+        live.onNeedsYou = { [weak self, weak live] request in
+            guard let self, let live else { return }
+            self.notifyNeedsYou(live, request: request)
+        }
+        return live
+    }
+
+    /// An urgent Signal when a thread you aren't looking at waits on you.
+    private func notifyNeedsYou(_ live: LiveThread, request: ApprovalRequest) {
+        guard settings.notifyWhenNeeded, let signals else { return }
+        let key = liveThreads.first { $0.value === live }?.key
+        let thread = key.flatMap { key in projects.lazy.flatMap(\.sessions).first { $0.id == key } }
+        guard key != selectedThreadID || !NSApplication.shared.isActive else { return }
+        signals.emit(
+            kind: "grimoire.needs-you", severity: .warning,
+            title: "Grimoire needs you\(thread.map { " in \($0.title)" } ?? "")",
+            body:
+                "\(request.toolName) \(ToolSummary.argument(name: request.toolName, input: request.input, workingDirectory: thread?.workingDirectory ?? ""))",
+            importance: .urgent, dedupeKey: "grimoire.needs-you:\(request.id)")
     }
 
     /// Tests hand in a fake; the app always uses the CLI it found.
@@ -266,10 +306,11 @@ final class GrimoireModel {
         return projects + openedFolders.filter { !known.contains($0) }.map { ClaudeProject(path: $0, sessions: []) }
     }
 
-    nonisolated static func detectCLI() -> (status: CLIStatus, environment: [String: String]) {
+    nonisolated static func detectCLI(override: String? = nil) -> (status: CLIStatus, environment: [String: String]) {
         let environment = CLILocator.loginEnvironment()
         let path = environment["PATH"] ?? ""
-        guard let executable = CLILocator.locate("claude", path: path) else {
+        let chosen = override.flatMap { CLILocator.defaultIsExecutable($0) ? URL(fileURLWithPath: $0) : nil }
+        guard let executable = chosen ?? CLILocator.locate("claude", path: path) else {
             return (.missing(searched: path), environment)
         }
         let version = version(of: executable, environment: environment) ?? ""

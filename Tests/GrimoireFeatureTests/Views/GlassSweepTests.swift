@@ -68,6 +68,28 @@ struct GlassSweepTests {
         await composing.reload()
         composing.isComposingNewThread = true
 
+        // Screen 8: Settings, with usage a thread reported.
+        let configuring = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        await configuring.reload()
+        configuring.engineOverride = { FakeEngine() }
+        configuring.startThread(
+            project: "/Users/me/Projects/Ainkrad", prompt: "go", model: nil, mode: .ask, worktree: false)
+        configuring.current?.apply(
+            .usage([
+                UsageWindow(name: "5-hour", utilization: 0.17, resetsAt: Date(timeIntervalSince1970: 1_791_652_200)),
+                UsageWindow(name: "7-day", utilization: 0.22, resetsAt: nil),
+            ]))
+        configuring.isShowingSettings = true
+
+        // Screen 9: no CLI found, and no threads yet.
+        let noCLI = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        noCLI.cli = .missing(searched: "/Users/me/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
+        let noThreads = GrimoireModel(
+            settings: SettingsStore(documents: MemoryDocs()),
+            sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())")
+        )
+        await noThreads.reload()
+
         let empty = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
         await empty.reload()
 
@@ -83,6 +105,9 @@ struct GlassSweepTests {
                 ("e42-thread", AnyView(RootView(model: model, theme: hostTheme))),
                 ("e43-approval", AnyView(RootView(model: waiting, theme: hostTheme))),
                 ("e45-review", AnyView(RootView(model: reviewing, theme: hostTheme))),
+                ("e48-settings", AnyView(RootView(model: configuring, theme: hostTheme))),
+                ("e49-no-cli", AnyView(RootView(model: noCLI, theme: hostTheme))),
+                ("e49-no-threads", AnyView(RootView(model: noThreads, theme: hostTheme))),
                 ("e47-new-thread", AnyView(RootView(model: composing, theme: hostTheme))),
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
             ]

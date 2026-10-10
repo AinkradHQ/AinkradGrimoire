@@ -116,6 +116,14 @@ public struct TurnResult: Sendable, Equatable {
     public var text: String?
 }
 
+public struct UsageWindow: Sendable, Equatable {
+    /// "5-hour", "7-day", …
+    public var name: String
+    /// 0…1.
+    public var utilization: Double
+    public var resetsAt: Date?
+}
+
 public enum EngineEvent: Sendable, Equatable {
     case sessionStarted(SessionInfo)
     case commands([SlashCommandInfo])
@@ -130,6 +138,8 @@ public enum EngineEvent: Sendable, Equatable {
     /// "requesting", "thinking", … — a status line, not content.
     case status(String)
     case turnFinished(TurnResult)
+    /// How much of each rate-limit window is used.
+    case usage([UsageWindow])
     /// Something the CLI printed that could not be understood, or a crash.
     case error(String)
     case exited(code: Int32)

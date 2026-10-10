@@ -49,6 +49,46 @@ final class SettingsStore {
         save()
     }
 
+    var cliPathOverride: String? {
+        get { document.cliPathOverride }
+        set {
+            document.cliPathOverride = newValue
+            save()
+        }
+    }
+
+    var defaultModel: String {
+        get { document.defaultModel }
+        set {
+            document.defaultModel = newValue
+            save()
+        }
+    }
+
+    var defaultMode: PermissionMode {
+        get { PermissionMode(rawValue: document.defaultMode) ?? .ask }
+        set {
+            document.defaultMode = newValue.rawValue
+            save()
+        }
+    }
+
+    var worktreeByDefault: Bool {
+        get { document.worktreeByDefault }
+        set {
+            document.worktreeByDefault = newValue
+            save()
+        }
+    }
+
+    var notifyWhenNeeded: Bool {
+        get { document.notifyWhenNeeded }
+        set {
+            document.notifyWhenNeeded = newValue
+            save()
+        }
+    }
+
     private func save() {
         guard canSave else { return }
         do {

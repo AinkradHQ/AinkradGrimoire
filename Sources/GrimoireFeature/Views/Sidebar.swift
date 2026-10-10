@@ -10,10 +10,16 @@ struct Sidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AinkradSpacing.sm) {
-            Text(skin.labelCased(GrimoireApp.displayName))
-                .font(skin.font(AinkradFontToken(sizeKey: "t14", weight: "bold")))
-                .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
-                .padding(.horizontal, skin.size.s6)
+            HStack {
+                Text(skin.labelCased(GrimoireApp.displayName))
+                    .font(skin.font(AinkradFontToken(sizeKey: "t14", weight: "bold")))
+                    .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+                Spacer(minLength: 0)
+                AinkradIconButton(systemName: "gearshape", size: skin.size.s26, tooltip: "Settings") {
+                    model.isShowingSettings.toggle()
+                }
+            }
+            .padding(.leading, skin.size.s6)
 
             HStack(spacing: AinkradSpacing.sm) {
                 AinkradButton(title: "New thread", style: .primary, icon: "plus") { model.isComposingNewThread = true }
@@ -94,12 +100,7 @@ struct Sidebar: View {
     }
 
     private func chooseFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.prompt = "Open"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        model.openFolder(url)
+        if let url = FolderPicker.choose() { model.openFolder(url) }
     }
 }
 

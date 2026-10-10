@@ -23,7 +23,9 @@ public struct GrimoireApp: AinkradApp, AinkradAppTeardown {
 
     private static func model(host: HostServices) -> GrimoireModel {
         models.value(for: instance(of: host)) {
-            GrimoireModel(settings: stores.value(for: instance(of: host)) { SettingsStore(documents: host.documents) })
+            GrimoireModel(
+                settings: stores.value(for: instance(of: host)) { SettingsStore(documents: host.documents) },
+                signals: host.signals)
         }
     }
 
