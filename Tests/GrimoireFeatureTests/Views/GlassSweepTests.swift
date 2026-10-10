@@ -48,6 +48,11 @@ struct GlassSweepTests {
                     id: "r9", toolUseID: "t9", toolName: "Bash", input: push, summary: "git push",
                     suggestions: [["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "git push:*"]]]])))
 
+        // Screen 7: the New thread sheet over the window.
+        let composing = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        await composing.reload()
+        composing.isComposingNewThread = true
+
         let empty = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
         await empty.reload()
 
@@ -62,6 +67,7 @@ struct GlassSweepTests {
             let screens: [(String, AnyView)] = [
                 ("e42-thread", AnyView(RootView(model: model, theme: hostTheme))),
                 ("e43-approval", AnyView(RootView(model: waiting, theme: hostTheme))),
+                ("e47-new-thread", AnyView(RootView(model: composing, theme: hostTheme))),
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
             ]
             for (name, view) in screens {

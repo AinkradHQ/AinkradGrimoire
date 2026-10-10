@@ -28,6 +28,10 @@ final class LiveThread {
     /// When the running turn started — drives the status line's clock.
     private(set) var turnStartedAt: Date?
 
+    /// Called once the CLI names the session — a new thread's id until then is
+    /// a placeholder.
+    var onSessionID: ((String) -> Void)?
+
     private var engine: HarnessEngine?
     private let makeEngine: () -> HarnessEngine
     private let startOptions: EngineStartOptions
@@ -119,6 +123,7 @@ final class LiveThread {
     func apply(_ event: EngineEvent) {
         switch event {
         case .sessionStarted(let info):
+            if info.sessionID != sessionID, !info.sessionID.isEmpty { onSessionID?(info.sessionID) }
             sessionID = info.sessionID
             if !info.model.isEmpty { model = info.model }
             if let mode = info.permissionMode { self.mode = mode }
