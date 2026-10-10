@@ -21,6 +21,7 @@ struct GlassSweepTests {
             return
         }
         let glass = try Self.glassSkin(themes: URL(fileURLWithPath: themes))
+        Self.registerHostFonts()
         try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
         let root = try SampleSessions.write()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -31,14 +32,22 @@ struct GlassSweepTests {
         let model = GrimoireModel(settings: settings, sessionsRoot: root)
         await model.reload()
         model.selectedThreadID = "glass"
+        let deadline = Date().addingTimeInterval(5)
+        while model.entries.isEmpty, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
 
         let empty = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
         await empty.reload()
 
         for (theme, skin) in [("neon", AinkradSkin.standard), ("glass", glass)] {
             let hostTheme = HostTheme(HostThemeTokens(skin: skin))
+            // The host passes the theme's real status colours; a bare
+            // `HostTheme` derives them from the accents.
+            hostTheme.updateStatusColors(
+                HostStatusColors(
+                    success: skin.color(skin.palette.success), warning: skin.color(skin.palette.warning),
+                    danger: skin.color(skin.palette.danger)))
             let screens: [(String, AnyView)] = [
-                ("e41-window", AnyView(RootView(model: model, theme: hostTheme))),
+                ("e42-thread", AnyView(RootView(model: model, theme: hostTheme))),
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
             ]
             for (name, view) in screens {
@@ -46,10 +55,24 @@ struct GlassSweepTests {
                     view.frame(width: 1100, height: 700)
                         .background(skin.color(skin.palette.background))
                         .ainkradSkin(skin)
+                        // As the host: Exo 2 under Neon, the system face under Glass.
+                        .environment(
+                            \.ainkradTypography, AinkradTypography(fontFamilyName: theme == "neon" ? "Exo 2" : nil)
+                        )
                         .environment(\.colorScheme, .dark),
                     size: CGSize(width: 1100, height: 700),
                     to: URL(fileURLWithPath: out).appendingPathComponent("\(name)-\(theme).png"))
             }
+        }
+    }
+
+    /// The host registers its bundled faces (Exo 2, JetBrains Mono) at launch;
+    /// the test runner doesn't, so borrow the installed app's for true-to-app shots.
+    static func registerHostFonts() {
+        let resources = URL(fileURLWithPath: "/Applications/Ainkrad.app/Contents/Resources")
+        let fonts = (try? FileManager.default.contentsOfDirectory(at: resources, includingPropertiesForKeys: nil)) ?? []
+        for font in fonts where font.pathExtension == "ttf" {
+            CTFontManagerRegisterFontsForURL(font as CFURL, .process, nil)
         }
     }
 
@@ -93,16 +116,61 @@ enum SampleSessions {
             let directory = root.appendingPathComponent(cwd.replacingOccurrences(of: "/", with: "-"))
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let file = directory.appendingPathComponent("\(thread.id).jsonl")
-            let lines = [
+            var lines = [
                 #"{"type":"user","cwd":"\#(cwd)","gitBranch":"\#(thread.branch)","origin":{"kind":"human"},"message":{"role":"user","content":"go"}}"#,
                 #"{"type":"assistant","cwd":"\#(cwd)","message":{"id":"m","model":"claude-opus-5-5","content":[{"type":"text","text":"ok"}]}}"#,
                 #"{"type":"ai-title","aiTitle":"\#(thread.title)","sessionId":"\#(thread.id)"}"#,
             ]
+            if thread.id == "glass" { lines = conversation(cwd: cwd, branch: thread.branch) + lines.suffix(1) }
             try lines.joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes(
                 [.modificationDate: Date(timeIntervalSinceNow: -thread.age)], ofItemAtPath: file.path)
         }
         return root
+    }
+
+    /// Screen 2 of the mockups as session lines: a prompt, thinking, prose,
+    /// search / read / edit / build, and the agent's plan.
+    static func conversation(cwd: String, branch: String) -> [String] {
+        let file = "\(cwd)/Sources/Ainkrad/Features/Sidebar/SidebarRow.swift"
+        func user(_ content: String) -> String {
+            #"{"type":"user","cwd":"\#(cwd)","gitBranch":"\#(branch)","origin":{"kind":"human"},"message":{"role":"user","content":"\#(content)"}}"#
+        }
+        func assistant(_ block: String) -> String {
+            #"{"type":"assistant","cwd":"\#(cwd)","gitBranch":"\#(branch)","message":{"id":"m","model":"claude-opus-5-5","content":[\#(block)]}}"#
+        }
+        func result(_ id: String, _ text: String) -> String {
+            #"{"type":"user","cwd":"\#(cwd)","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"\#(id)","content":"\#(text)"}]}}"#
+        }
+        return [
+            user(
+                "The sidebar rows in Liquid Glass still draw a hairline under the selected thread. Remove it and make the selection a glass capsule like Finder."
+            ),
+            assistant(
+                #"{"type":"thinking","thinking":"The stroke is probably an overlay on the row. Search for strokeBorder in the sidebar first."}"#
+            ),
+            assistant(
+                #"{"type":"text","text":"I'll find where the selected row draws its stroke, then switch it to the kit's glass capsule under `skin.usesNativeGlass`."}"#
+            ),
+            assistant(
+                #"{"type":"tool_use","id":"t1","name":"Grep","input":{"pattern":"strokeBorder","path":"\#(cwd)/Sources/Ainkrad/Features/Sidebar"}}"#
+            ),
+            result("t1", #"SidebarRow.swift:59\nSidebarRow.swift:88\nSidebarHeader.swift:21"#),
+            assistant(#"{"type":"tool_use","id":"t2","name":"Read","input":{"file_path":"\#(file)"}}"#),
+            result("t2", String(repeating: #"line\n"#, count: 141) + "line"),
+            assistant(
+                #"{"type":"tool_use","id":"t3","name":"Edit","input":{"file_path":"\#(file)","old_string":"        .padding(.horizontal, skin.size.s8)\n        .overlay(alignment: .bottom) { Rectangle().frame(height: 1) }\n        .contentShape(Rectangle())","new_string":"        .padding(.horizontal, skin.size.s8)\n        .background {\n            if isSelected { Capsule().glassEffect(.regular) }\n        }\n        .contentShape(Rectangle())"}}"#
+            ),
+            result("t3", "The file has been updated."),
+            assistant(#"{"type":"tool_use","id":"t4","name":"Bash","input":{"command":"make build"}}"#),
+            result("t4", "** BUILD SUCCEEDED **"),
+            assistant(
+                #"{"type":"tool_use","id":"t5","name":"TodoWrite","input":{"todos":[{"content":"Find the selection stroke","status":"completed"},{"content":"Switch to a glass capsule","status":"completed"},{"content":"Run the sidebar goldens","status":"in_progress"},{"content":"Screenshot Neon | Glass","status":"pending"}]}}"#
+            ),
+            assistant(
+                #"{"type":"text","text":"The selected row now draws a **glass capsule**; the hairline is gone. Next I'll run the sidebar goldens under both themes."}"#
+            ),
+        ]
     }
 }
 
