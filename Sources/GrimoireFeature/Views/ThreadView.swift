@@ -8,6 +8,7 @@ struct ThreadView: View {
     let model: GrimoireModel
     let thread: ClaudeSessionSummary
     @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradToastCenter) private var toasts
 
     var body: some View {
         HStack(spacing: 0) {
@@ -27,10 +28,16 @@ struct ThreadView: View {
                 ReviewPane(review: review) { model.isReviewOpen = false }
             }
         }
+        .onChange(of: model.terminalProblem) { _, problem in
+            if let problem { toasts.show(problem, status: .warning) }
+        }
     }
 
     @ViewBuilder
     private var actions: some View {
+        AinkradIconButton(systemName: "terminal", size: skin.size.s30, tooltip: "Open a terminal here (Rune)") {
+            model.openTerminal(for: thread)
+        }
         AinkradIconButton(systemName: "plusminus", size: skin.size.s30, tooltip: "Review changes") {
             model.isReviewOpen.toggle()
         }
@@ -86,7 +93,9 @@ private struct ConversationView: View {
                 .padding(.top, skin.size.s8)
                 .padding(.bottom, skin.size.s20)
             }
-            .onAppear { scrollToNewest(proxy) }
+            // Opens at the newest message without jumping there before the rows
+            // above are laid out (which left a blank gap at the top).
+            .defaultScrollAnchor(.bottom)
             .onChange(of: live.entries.count) { scrollToNewest(proxy) }
             .onChange(of: live.entries.last) { scrollToNewest(proxy) }
         }

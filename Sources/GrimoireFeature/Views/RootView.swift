@@ -21,6 +21,7 @@ struct RootView: View {
         ) {
             NewThreadSheet(model: model) { model.isComposingNewThread = false }
         }
+        .ainkradToastHost()
         .ainkradHostTheme(theme)
         .task { model.start() }
     }
