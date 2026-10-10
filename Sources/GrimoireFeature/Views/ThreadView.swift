@@ -42,8 +42,11 @@ struct ThreadView: View {
         AinkradIconButton(systemName: "plusminus", size: skin.size.s30, tooltip: "Review changes") {
             model.isReviewOpen.toggle()
         }
-        AinkradIconButton(systemName: "arrow.triangle.branch", size: skin.size.s30, tooltip: "Fork this thread") {
-            model.forkThread(thread)
+        // agy has no fork.
+        if thread.harness != .agy {
+            AinkradIconButton(systemName: "arrow.triangle.branch", size: skin.size.s30, tooltip: "Fork this thread") {
+                model.forkThread(thread)
+            }
         }
         AinkradMenuButton(
             items: [

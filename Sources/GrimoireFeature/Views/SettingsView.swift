@@ -39,7 +39,9 @@ struct SettingsView: View {
                         agentRow(badge: "OpenCode", tint: theme.accentTertiary, detail: detail(model.status(of: .opencode))) {
                             EmptyView()
                         }
-                        agentRow(badge: "agy", tint: theme.accentPrimary, detail: "Coming in a later version") {
+                        agentRow(
+                            badge: "agy", tint: theme.accentPrimary,
+                            detail: detail(model.status(of: .agy)) + " · approvals follow agy's own setting") {
                             EmptyView()
                         }
                     }

@@ -251,7 +251,7 @@ private struct ShowAllRow: View {
 }
 
 /// Which agent a thread runs on: Claude in its brand clay, Codex in the
-/// foreground colour, OpenCode in the theme's tertiary accent.
+/// foreground colour, OpenCode and agy in the theme's tertiary and primary accents.
 struct HarnessBadge: View {
     // design-lint: allow raw-color kit-gap colors.providerBrand (Claude's brand clay, as Sage's model picker)
     static let claudeTint = Color(.sRGB, red: 0xCC / 255, green: 0x78 / 255, blue: 0x5C / 255)
@@ -272,6 +272,7 @@ struct HarnessBadge: View {
         case .claude: Self.claudeTint
         case .codex: theme.foreground
         case .opencode: theme.accentTertiary
+        case .agy: theme.accentPrimary
         }
     }
 }

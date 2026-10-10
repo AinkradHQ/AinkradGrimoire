@@ -93,6 +93,11 @@ final class GrimoireModel {
                 let server = openCode.server(executable: URL(fileURLWithPath: path), environment: environment)
                 return (status, await OpenCodeSessions.summaries(server: server))
             },
+            .agy: { environment in
+                let status = GrimoireModel.detectCLI(command: "agy", environment: environment).status
+                guard case .found = status else { return (status, []) }
+                return (status, AgySessions.summaries())
+            },
         ]
     }
     private var activation: NSObjectProtocol?
@@ -285,6 +290,8 @@ final class GrimoireModel {
                 case (.opencode, .found):
                     if let openCode { ThreadEntries.build(await OpenCodeSessions.history(of: thread, server: openCode)) }
                     else { [] }
+                // agy stores earlier turns in an internal format; only new ones show.
+                case (.agy, _): [.text(Self.agyHistoryNote)]
                 case (.codex, _), (.opencode, _): []
                 }
             }.value
@@ -366,8 +373,12 @@ final class GrimoireModel {
         case .codex: return CodexEngine(executable: executable, environment: environment)
         case .opencode:
             return OpenCodeEngine(server: openCode.server(executable: executable, environment: environment))
+        case .agy: return AgyEngine(executable: executable, environment: environment)
         }
     }
+
+    nonisolated static let agyHistoryNote =
+        "*agy keeps this conversation's earlier turns in its own format, so they aren't shown here. New turns appear below.*"
 
     // MARK: - What the sidebar shows
 

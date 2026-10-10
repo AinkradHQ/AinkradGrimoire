@@ -5,12 +5,14 @@ public enum Harness: String, Sendable, CaseIterable {
     case claude
     case codex
     case opencode
+    case agy
 
     public var displayName: String {
         switch self {
         case .claude: "Claude"
         case .codex: "Codex"
         case .opencode: "OpenCode"
+        case .agy: "agy"
         }
     }
 
