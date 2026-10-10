@@ -1,4 +1,5 @@
 import AinkradAppKit
+import AppKit
 import SwiftUI
 
 /// The selected thread: its header, the conversation (opened at the newest
@@ -9,16 +10,59 @@ struct ThreadView: View {
     @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ThreadHeader(thread: thread, model: model.current?.model)
-            if let live = model.current {
-                ConversationView(live: live, workingDirectory: thread.workingDirectory)
-                ThreadFooter(live: live, model: model, workingDirectory: thread.workingDirectory)
-            } else {
-                AinkradLoadingState(label: "Opening the thread…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                ThreadHeader(thread: thread, model: model.current?.model) {
+                    actions
+                }
+                if let live = model.current {
+                    ConversationView(live: live, workingDirectory: thread.workingDirectory)
+                    ThreadFooter(live: live, model: model, workingDirectory: thread.workingDirectory)
+                } else {
+                    AinkradLoadingState(label: "Opening the thread…")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            if model.isReviewOpen, let review = model.review(for: thread) {
+                ReviewPane(review: review) { model.isReviewOpen = false }
             }
         }
+    }
+
+    @ViewBuilder
+    private var actions: some View {
+        AinkradIconButton(systemName: "plusminus", size: skin.size.s30, tooltip: "Review changes") {
+            model.isReviewOpen.toggle()
+        }
+        AinkradIconButton(systemName: "arrow.triangle.branch", size: skin.size.s30, tooltip: "Fork this thread") {
+            model.forkThread(thread)
+        }
+        AinkradMenuButton(
+            items: [
+                AinkradMenuItem(title: "Copy resume command", systemName: "doc.on.doc") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(
+                        "cd \(Self.shellQuoted(thread.workingDirectory)) && claude --resume \(thread.id)",
+                        forType: .string)
+                },
+                AinkradMenuItem(title: "Reveal session file", systemName: "doc.text.magnifyingglass") {
+                    NSWorkspace.shared.activateFileViewerSelecting([thread.fileURL])
+                },
+                AinkradMenuItem(title: "Open project in Finder", systemName: "folder") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: thread.workingDirectory))
+                },
+            ]
+        ) {
+            Image(systemName: "ellipsis")
+                .frame(width: skin.size.s30, height: skin.size.s30)
+                .contentShape(Rectangle())
+        }
+        .fixedSize()
+        .help("More")
+    }
+
+    static func shellQuoted(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 }
 
@@ -248,7 +292,7 @@ private struct OutputBlock: View {
 }
 
 /// An edit's hunks: removed lines red, added green, context muted.
-private struct DiffBlock: View {
+struct DiffBlock: View {
     let diff: AinkradFileDiff
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradSkin) private var skin

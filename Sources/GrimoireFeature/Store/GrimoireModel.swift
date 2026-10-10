@@ -40,10 +40,13 @@ final class GrimoireModel {
     /// you switch away.
     private(set) var liveThreads: [String: LiveThread] = [:]
     /// The login shell's environment, handed to every agent process.
-    private var environment: [String: String] = [:]
+    private(set) var environment: [String: String] = [:]
     var searchText = ""
     var showsAllProjects = false
     var isComposingNewThread = false
+    /// The review pane beside the conversation; stays open across threads.
+    var isReviewOpen = false
+    private var reviews: [String: ReviewModel] = [:]
 
     let settings: SettingsStore
     private let sessionsRoot: URL
@@ -105,6 +108,26 @@ final class GrimoireModel {
         liveThreads[placeholder] = live
         selectedThreadID = placeholder
         live.send(prompt)
+    }
+
+    /// Continues `thread` as a new session with the same history. The fork
+    /// shows as a draft until its first message, when the CLI names it.
+    func forkThread(_ thread: ClaudeSessionSummary) {
+        guard let source = liveThreads[thread.id] else { return }
+        let placeholder = "new-\(UUID().uuidString)"
+        let draft = ClaudeSessionSummary(
+            id: placeholder, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: thread.workingDirectory,
+            projectPath: thread.projectPath, worktree: thread.worktree, title: "Fork of \(thread.title)",
+            gitBranch: thread.gitBranch, model: source.model, lastActivity: Date())
+        let live = LiveThread(
+            entries: source.entries,
+            startOptions: EngineStartOptions(
+                workingDirectory: URL(fileURLWithPath: thread.workingDirectory), resume: thread.id, fork: true),
+            model: source.model, makeEngine: { [weak self] in self?.makeEngine() ?? UnavailableEngine() })
+        live.onSessionID = { [weak self] id in self?.adopt(placeholder, as: id) }
+        draftThreads.insert(draft, at: 0)
+        liveThreads[placeholder] = live
+        selectedThreadID = placeholder
     }
 
     /// Re-keys a new thread under the session id the CLI gave it.
@@ -183,6 +206,15 @@ final class GrimoireModel {
             projectFiles[directory] = listed
         }
         return []
+    }
+
+    /// The selected thread's review state, kept per thread.
+    func review(for thread: ClaudeSessionSummary) -> ReviewModel? {
+        guard let live = current else { return nil }
+        if let review = reviews[thread.id] { return review }
+        let review = ReviewModel(live: live, workingDirectory: thread.workingDirectory, environment: environment)
+        reviews[thread.id] = review
+        return review
     }
 
     /// Tests hand in a fake; the app always uses the CLI it found.
