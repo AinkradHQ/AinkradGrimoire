@@ -42,6 +42,8 @@ final class LiveThread {
     /// The assistant message whose text is streaming into `entries[index]`.
     private var streaming: (messageID: String, index: Int)?
     private var toolIndex: [String: Int] = [:]
+    /// Plans by their tool id, so an updated plan replaces its card.
+    private var planIndex: [String: Int] = [:]
 
     init(
         entries: [ThreadEntry], startOptions: EngineStartOptions, model: String? = nil,
@@ -195,7 +197,12 @@ final class LiveThread {
         case .toolUse(let id, let name, let input):
             streaming = nil
             if name == "TodoWrite", let steps = ThreadEntries.plan(from: input) {
-                entries.append(.plan(steps))
+                if let index = planIndex[id] {
+                    entries[index] = .plan(steps)
+                } else {
+                    planIndex[id] = entries.count
+                    entries.append(.plan(steps))
+                }
             } else {
                 toolIndex[id] = entries.count
                 entries.append(.tool(ToolCall(id: id, name: name, input: input, result: nil)))

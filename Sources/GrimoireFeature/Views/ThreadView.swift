@@ -18,7 +18,8 @@ struct ThreadView: View {
                 }
                 if let live = model.current {
                     ConversationView(live: live, workingDirectory: thread.workingDirectory)
-                    ThreadFooter(live: live, model: model, workingDirectory: thread.workingDirectory)
+                    ThreadFooter(
+                        live: live, model: model, workingDirectory: thread.workingDirectory, harness: thread.harness)
                 } else {
                     AinkradLoadingState(label: "Opening the thread…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -199,7 +200,7 @@ private struct ToolCard: View {
         self.call = call
         self.workingDirectory = workingDirectory
         self.isWaiting = isWaiting
-        _isExpanded = State(initialValue: ["Edit", "MultiEdit", "Write", "Bash"].contains(call.name))
+        _isExpanded = State(initialValue: ["Edit", "MultiEdit", "Write", "Patch", "Bash"].contains(call.name))
     }
 
     var body: some View {
@@ -248,6 +249,13 @@ private struct ToolCard: View {
         switch call.name {
         case "Edit", "MultiEdit":
             return AnyView(DiffBlock(diff: ToolSummary.editDiff(call.input)))
+        case "Patch":
+            return AnyView(
+                VStack(alignment: .leading, spacing: skin.size.s6) {
+                    ForEach(ReviewChanges.patchChanges(call.input).compactMap(\.diff), id: \.path) { diff in
+                        DiffBlock(diff: diff)
+                    }
+                })
         case "Bash" where call.result == nil:
             return AnyView(OutputBlock(text: "$ " + (call.input["command"]?.stringValue ?? ""), maxLines: 8))
         case "Write":

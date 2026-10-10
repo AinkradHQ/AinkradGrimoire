@@ -7,6 +7,7 @@ struct ThreadFooter: View {
     let live: LiveThread
     let model: GrimoireModel
     let workingDirectory: String
+    var harness: Harness = .claude
     @State private var draft = ""
     @Environment(\.ainkradSkin) private var skin
 
@@ -17,7 +18,7 @@ struct ThreadFooter: View {
             }
             StatusLine(live: live)
             AinkradComposer(
-                text: $draft, placeholder: "Message Claude… (/ for commands, @ for files)", isEditable: true,
+                text: $draft, placeholder: "Message \(harness.displayName)… (/ for commands, @ for files)", isEditable: true,
                 canSend: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, autoFocus: true,
                 suggestions: suggestions, onPick: { _, _ in }, onDrop: nil, onSend: send
             ) {
@@ -82,7 +83,18 @@ struct ThreadFooter: View {
         .help("Permission mode")
     }
 
+    @ViewBuilder
     private var modelMenu: some View {
+        // Codex's models come from its own config; Grimoire shows, not picks, them.
+        if harness == .codex {
+            MenuValue(caption: "Model", value: live.model.map(ModelName.display) ?? "Default")
+                .padding(.horizontal, skin.size.s10)
+        } else {
+            claudeModelMenu
+        }
+    }
+
+    private var claudeModelMenu: some View {
         AinkradMenuButton(
             items: ["opus", "sonnet", "haiku"].map { alias in
                 AinkradMenuItem(title: alias.capitalized) { live.setModel(alias) }

@@ -1,10 +1,28 @@
 import Foundation
 
-/// One Claude Code session, as listed in a project: enough to show the row and
+/// The coding-agent CLIs Grimoire can drive.
+public enum Harness: String, Sendable, CaseIterable {
+    case claude
+    case codex
+
+    public var displayName: String {
+        switch self {
+        case .claude: "Claude"
+        case .codex: "Codex"
+        }
+    }
+
+    /// The executable's name on the PATH.
+    var command: String { rawValue }
+}
+
+/// One agent session (Claude Code or Codex), as listed in a project: enough to show the row and
 /// to `--resume` it. Read from the CLI's own file, so a thread started in the
 /// terminal shows up here and vice versa.
 public struct ClaudeSessionSummary: Sendable, Equatable, Identifiable {
     public var id: String
+    /// Which CLI owns the session.
+    public var harness: Harness = .claude
     public var fileURL: URL
     /// The directory the session ran in — the worktree's, for a worktree session.
     public var workingDirectory: String
@@ -42,17 +60,19 @@ public enum ClaudeSessions {
     public static func projects(root: URL = defaultRoot) -> [ClaudeProject] {
         let fileManager = FileManager.default
         let directories = (try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
-        var byPath: [String: [ClaudeSessionSummary]] = [:]
+        var sessions: [ClaudeSessionSummary] = []
         for directory in directories {
             let files =
                 (try? fileManager.contentsOfDirectory(
                     at: directory, includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey])) ?? []
-            for file in files where file.pathExtension == "jsonl" {
-                guard let summary = summary(of: file) else { continue }
-                byPath[summary.projectPath, default: []].append(summary)
-            }
+            sessions += files.filter { $0.pathExtension == "jsonl" }.compactMap(summary(of:))
         }
-        return byPath.map { path, sessions in
+        return grouped(sessions)
+    }
+
+    /// Sessions of any harness grouped by project, newest first.
+    static func grouped(_ sessions: [ClaudeSessionSummary]) -> [ClaudeProject] {
+        Dictionary(grouping: sessions, by: \.projectPath).map { path, sessions in
             ClaudeProject(path: path, sessions: sessions.sorted { $0.lastActivity > $1.lastActivity })
         }
         .sorted { $0.lastActivity > $1.lastActivity }

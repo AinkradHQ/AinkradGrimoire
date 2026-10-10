@@ -39,35 +39,65 @@ enum ReviewChanges {
         }
         var order: [String] = []
         var hunks: [String: [AinkradDiffHunk]] = [:]
-        var created: Set<String> = []
+        var statuses: [String: FileChange.Status] = [:]
         for entry in slice {
-            guard case .tool(let call) = entry, call.result?.isError != true,
-                let absolute = call.input["file_path"]?.stringValue
-            else { continue }
-            let path = ToolSummary.relative(absolute, to: workingDirectory)
-            let diff: AinkradFileDiff
+            guard case .tool(let call) = entry, call.result?.isError != true else { continue }
+            let edits: [FileChange]
+            let absolute = call.input["file_path"]?.stringValue ?? ""
             switch call.name {
             case "Edit", "MultiEdit":
-                diff = ToolSummary.editDiff(call.input)
+                edits = [FileChange(path: absolute, status: .modified, diff: ToolSummary.editDiff(call.input))]
             case "Write":
-                diff = AinkradDiffEngine.compute(
-                    old: "", new: call.input["content"]?.stringValue ?? "", path: path, context: 0)
-                if hunks[path] == nil { created.insert(path) }
+                let diff = AinkradDiffEngine.compute(
+                    old: "", new: call.input["content"]?.stringValue ?? "", path: absolute, context: 0)
+                edits = [FileChange(path: absolute, status: .added, diff: diff)]
+            case "Patch":
+                edits = patchChanges(call.input)
             default:
                 continue
             }
-            if hunks[path] == nil { order.append(path) }
-            let offset = hunks[path]?.count ?? 0
-            hunks[path, default: []] += diff.hunks.enumerated().map { index, hunk in
-                AinkradDiffHunk(
-                    id: offset + index, oldStart: hunk.oldStart, oldCount: hunk.oldCount, newStart: hunk.newStart,
-                    newCount: hunk.newCount, lines: hunk.lines)
+            for edit in edits where !edit.path.isEmpty {
+                guard let diff = edit.diff else { continue }
+                let path = ToolSummary.relative(edit.path, to: workingDirectory)
+                if hunks[path] == nil {
+                    order.append(path)
+                    statuses[path] = edit.status
+                }
+                let offset = hunks[path]?.count ?? 0
+                hunks[path, default: []] += diff.hunks.enumerated().map { index, hunk in
+                    AinkradDiffHunk(
+                        id: offset + index, oldStart: hunk.oldStart, oldCount: hunk.oldCount, newStart: hunk.newStart,
+                        newCount: hunk.newCount, lines: hunk.lines)
+                }
             }
         }
         return order.map { path in
             FileChange(
-                path: path, status: created.contains(path) ? .added : .modified,
+                path: path, status: statuses[path] ?? .modified,
                 diff: AinkradFileDiff(path: path, original: "", hunks: hunks[path] ?? []))
+        }
+    }
+
+    /// A Codex `fileChange` (`Patch`) as changes with absolute paths. An
+    /// update's `diff` is bare hunks; an add's or delete's is the whole file.
+    static func patchChanges(_ input: JSONValue) -> [FileChange] {
+        (input["changes"]?.arrayValue ?? []).compactMap { change in
+            guard let path = change["path"]?.stringValue else { return nil }
+            let text = change["diff"]?.stringValue ?? ""
+            switch change["kind"]?["type"]?.stringValue {
+            case "add":
+                return FileChange(
+                    path: path, status: .added, diff: AinkradDiffEngine.compute(old: "", new: text, path: path, context: 0))
+            case "delete":
+                return FileChange(
+                    path: path, status: .deleted,
+                    diff: AinkradDiffEngine.compute(old: text, new: "", path: path, context: 0))
+            default:
+                let parsed = parseUnifiedDiff("diff --git a/x b/x\n" + text).first
+                return FileChange(path: path, status: .modified, diff: parsed?.diff.map {
+                    AinkradFileDiff(path: path, original: "", hunks: $0.hunks)
+                })
+            }
         }
     }
 

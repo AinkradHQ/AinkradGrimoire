@@ -46,9 +46,9 @@ struct MainPane: View {
     @ViewBuilder
     private var content: some View {
         Group {
-            switch model.cli {
+            switch model.agentStatus {
             case .checking:
-                AinkradLoadingState(label: "Looking for Claude Code…")
+                AinkradLoadingState(label: "Looking for coding agents…")
             case .missing(let searched):
                 EmptyWithActions(
                     icon: "terminal",
@@ -57,6 +57,7 @@ struct MainPane: View {
                         Grimoire drives the CLIs you already use. It looked on your login shell's PATH:
                         \(searched)
                         Install Claude Code with: npm install -g @anthropic-ai/claude-code
+                        or Codex with: npm install -g @openai/codex
                         """
                 ) {
                     AinkradButton(title: "Choose the CLI…", style: .secondary) { model.isShowingSettings = true }
@@ -155,7 +156,7 @@ struct ThreadHeader<Actions: View>: View {
                     Text("·")
                     Text(branch).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                 }
-                HarnessBadge.claude.fixedSize()
+                HarnessBadge(harness: thread.harness).fixedSize()
                 if let model = (model ?? thread.model).map(ModelName.display) {
                     Text(model).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                 }
