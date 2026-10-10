@@ -44,7 +44,7 @@ struct NewThreadSheet: View {
                 HStack(spacing: skin.size.s8) {
                     AinkradSegmentedPicker(items: Self.installed(model), selection: $harness) { $0.displayName }
                         .fixedSize()
-                    Text("agy is coming")
+                    Text(harness == .agy ? "agy runs tools per its own permission setting" : "")
                         .font(skin.font(AinkradFontToken(sizeKey: "t11")))
                         .foregroundStyle(skin.color(skin.text.faint))
                 }

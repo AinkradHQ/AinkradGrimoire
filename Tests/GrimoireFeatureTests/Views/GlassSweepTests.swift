@@ -83,15 +83,25 @@ struct GlassSweepTests {
             worktree: false, harness: .opencode)
         for event in SampleSessions.openCodeTurn { opencoding.current?.apply(event) }
 
+        // E8: an agy thread — a stored one opens on the history note, then a new turn.
+        let agying = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        agying.listers = SampleSessions.allListers
+        await agying.reload()
+        agying.engineOverride = { FakeEngine() }
+        agying.selectedThreadID = "agy-1"
+        while agying.current == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        agying.current?.send("Check the formula's sha against the release")
+        for event in SampleSessions.agyTurn { agying.current?.apply(event) }
+
         // Screen 7: the New thread sheet over the window.
         let composing = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
-        composing.listers = [.codex: SampleSessions.codex, .opencode: SampleSessions.openCode]
+        composing.listers = SampleSessions.allListers
         await composing.reload()
         composing.isComposingNewThread = true
 
         // Screen 8: Settings, with usage a thread reported.
         let configuring = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
-        configuring.listers = [.codex: SampleSessions.codex, .opencode: SampleSessions.openCode]
+        configuring.listers = SampleSessions.allListers
         await configuring.reload()
         configuring.engineOverride = { FakeEngine() }
         configuring.startThread(
@@ -134,6 +144,7 @@ struct GlassSweepTests {
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
                 ("e6-codex-thread", AnyView(RootView(model: codexing, theme: hostTheme))),
                 ("e7-opencode-thread", AnyView(RootView(model: opencoding, theme: hostTheme))),
+                ("e8-agy-thread", AnyView(RootView(model: agying, theme: hostTheme))),
             ]
             for (name, view) in screens {
                 try LiveGlassCapture.shoot(
@@ -195,6 +206,31 @@ enum SampleSessions {
             ]
         )
     }
+
+    static let allListers: [Harness: GrimoireModel.Lister] = [.codex: codex, .opencode: openCode, .agy: agy]
+
+    /// A found `agy` with one stored conversation.
+    static let agy: GrimoireModel.Lister = { _ in
+        (
+            .found(path: "/Users/me/.local/bin/agy", version: "1.3.2"),
+            [
+                ClaudeSessionSummary(
+                    id: "agy-1", harness: .agy, fileURL: URL(fileURLWithPath: "/dev/null"),
+                    workingDirectory: "/Users/me/Projects/Ainkrad", projectPath: "/Users/me/Projects/Ainkrad",
+                    title: "Homebrew cask audit", lastActivity: Date(timeIntervalSinceNow: -90))
+            ]
+        )
+    }
+
+    /// One agy turn: a command, a file update and the answer.
+    static let agyTurn: [EngineEvent] = [
+        .block(messageID: "step-2", .toolUse(id: "step-2", name: "Bash", input: ["command": "shasum -a 256 ainkrad.dmg"])),
+        .toolResult(toolUseID: "step-2", content: "4be1…9c2e  ainkrad.dmg\n", isError: false),
+        .block(messageID: "step-4", .toolUse(id: "step-4", name: "Update", input: ["file_path": "/Users/me/Projects/Ainkrad/Casks/ainkrad.rb"])),
+        .toolResult(toolUseID: "step-4", content: "", isError: false),
+        .block(messageID: "step-6", .text("The cask's sha256 was stale; it now matches the 0.31.0 release.")),
+        .turnFinished(TurnResult(outcome: .success, sessionID: "agy-1", costUSD: nil, text: nil)),
+    ]
 
     /// A found `opencode` with one stored session.
     static let openCode: GrimoireModel.Lister = { _ in

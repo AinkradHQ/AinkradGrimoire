@@ -3,7 +3,7 @@ set -euo pipefail
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 VERSION="${1:?usage: release.sh vX.Y.Z}"
 ID="grimoire"; NAME="Grimoire"; ICON="book.closed"
-DESC="Claude Code, Codex and OpenCode in a native window: threads, live turns, approvals, review and commit."
+DESC="Claude Code, Codex, OpenCode and agy in a native window: threads, live turns, approvals, review and commit."
 
 # Build CLEAN. An incremental build reuses whatever SwiftPM already resolved
 # into build/SourcePackages — so after an SDK repin it can silently produce a

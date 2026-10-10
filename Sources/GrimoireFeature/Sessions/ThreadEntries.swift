@@ -85,7 +85,7 @@ enum ToolSummary {
         }
         switch name {
         case "Bash": return input["command"]?.stringValue ?? ""
-        case "Read", "Edit", "Write", "MultiEdit", "NotebookEdit":
+        case "Read", "Edit", "Write", "MultiEdit", "NotebookEdit", "Update":
             return path("file_path") ?? path("notebook_path") ?? ""
         case "Grep":
             let pattern = input["pattern"]?.stringValue.map { "\"\($0)\"" } ?? ""
