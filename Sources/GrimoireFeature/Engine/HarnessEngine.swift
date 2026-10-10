@@ -26,16 +26,21 @@ public struct EngineStartOptions: Sendable, Equatable {
     public var permissionMode: PermissionMode?
     public var resume: String?
     public var fork: Bool
+    /// Run the new session in its own git worktree with this name (the CLI
+    /// creates `<repo>/.claude/worktrees/<name>`). Ignored when resuming:
+    /// a resumed session runs where it ran before.
+    public var worktree: String?
 
     public init(
         workingDirectory: URL, model: String? = nil, permissionMode: PermissionMode? = nil, resume: String? = nil,
-        fork: Bool = false
+        fork: Bool = false, worktree: String? = nil
     ) {
         self.workingDirectory = workingDirectory
         self.model = model
         self.permissionMode = permissionMode
         self.resume = resume
         self.fork = fork
+        self.worktree = worktree
     }
 }
 
