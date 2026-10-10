@@ -1,0 +1,7 @@
+build/
+dist/
+*.xcodeproj/
+.DS_Store
+.build/
+.ainkrad-build/
+*.bundle.zip

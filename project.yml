@@ -1,0 +1,75 @@
+name: AinkradGrimoire
+options:
+  bundleIdPrefix: com.ainkrad
+  deploymentTarget: { macOS: "14.0" }
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_IDENTITY: "-"
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    EAGER_LINKING: NO
+packages:
+  AinkradAppKit:
+    url: https://github.com/AinkradHQ/AinkradAppKit
+    # Must stay AT OR BEHIND the host's pin — the host embeds the one dynamic
+    # copy of the SDK, so a plugin built against a NEWER revision links symbols
+    # that copy does not define and dies at `Bundle.load()`. This matches the
+    # host's pin exactly: the settings-catalog merge, which is what
+    # `settingsCatalog(host:)` in Sources/GrimoireFeature/PluginApp.swift needs.
+    # aa3fc95: Glass Native kit (#96–#107), same as AinkradPluginTemplate.
+    revision: aa3fc955d523a9ec940626bddeeabd927c587737
+targets:
+  GrimoireFeature:
+    type: library.static
+    platform: macOS
+    sources: [Sources/GrimoireFeature]
+    dependencies:
+      - package: AinkradAppKit
+        embed: false
+  GrimoirePlugin:
+    type: bundle
+    platform: macOS
+    sources: [Sources/GrimoirePlugin]
+    dependencies:
+      - target: GrimoireFeature
+      # AinkradAppKit is the ONLY shared dependency: dynamic + NOT embedded, so
+      # the host's copy is used at runtime and protocol casts succeed. Any other
+      # runtime dependency must be statically linked (see the template guide,
+      # Docs/Reference/ainkradplugintemplate-readme.md in the Ainkrad workspace).
+      - package: AinkradAppKit
+        embed: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ainkrad.plugin.grimoire
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Sources/GrimoirePlugin/Info.plist
+        MACH_O_TYPE: mh_bundle
+        LD_RUNPATH_SEARCH_PATHS: "@executable_path/../Frameworks"
+        OTHER_LDFLAGS: ["-lGrimoireFeature"]
+    postBuildScripts:
+      # Generate AinkradAPIVersion from the linked SDK rather than
+      # trusting the hand-typed value in Info.plist — see the script.
+      - script: "\"$SRCROOT/scripts/stamp-api-version.sh\""
+        name: Stamp AinkradAPIVersion
+        # The plist is an INPUT, not an output: declaring it makes the build
+        # system order this phase after the task that copies it into the
+        # bundle. Without it the script races that copy and finds nothing.
+        inputFiles:
+          - $(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)
+        # No outputs, so keep it running every build: the linked SDK revision
+        # can change generation without any source file changing.
+        basedOnDependencyAnalysis: false
+  GrimoireFeatureTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources: [Tests/GrimoireFeatureTests]
+    dependencies:
+      - target: GrimoireFeature
+      - package: AinkradAppKit
+schemes:
+  GrimoirePlugin:
+    build: { targets: { GrimoirePlugin: all, GrimoireFeatureTests: [test] } }
+    test: { config: Debug, targets: [GrimoireFeatureTests] }

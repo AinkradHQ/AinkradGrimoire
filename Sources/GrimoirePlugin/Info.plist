@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleIdentifier</key><string>com.ainkrad.plugin.grimoire</string>
+    <key>CFBundleName</key><string>GrimoirePlugin</string>
+    <!-- REQUIRED: the host renames an installed bundle to <appID>.bundle, so
+         this must be set explicitly or the bundle won't load. -->
+    <key>CFBundleExecutable</key><string>GrimoirePlugin</string>
+    <key>CFBundlePackageType</key><string>BNDL</string>
+    <key>NSPrincipalClass</key><string>GrimoirePluginEntryPoint</string>
+    <key>AinkradAppID</key><string>grimoire</string>
+    <key>AinkradDisplayName</key><string>Grimoire</string>
+    <key>AinkradIconSymbol</key><string>book.closed</string>
+    <!-- Placeholder: scripts/stamp-api-version.sh writes the linked SDK's
+         generation into the BUILT bundle, and `ainkrad new` substitutes this
+         exact line. Never hand-edit the number. -->
+    <key>AinkradAPIVersion</key><integer>11</integer>
+    <key>AinkradAuthor</key><string>Ahmed Elhalaby</string>
+    <key>description</key><string>Claude Code, Codex, OpenCode and agy in one native app.</string>
+</dict>
+</plist>
