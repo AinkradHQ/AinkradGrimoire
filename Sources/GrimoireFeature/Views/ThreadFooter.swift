@@ -85,8 +85,8 @@ struct ThreadFooter: View {
 
     @ViewBuilder
     private var modelMenu: some View {
-        // Codex's models come from its own config; Grimoire shows, not picks, them.
-        if harness == .codex {
+        // Codex's and OpenCode's models come from their own config; Grimoire shows, not picks, them.
+        if harness != .claude {
             MenuValue(caption: "Model", value: live.model.map(ModelName.display) ?? "Default")
                 .padding(.horizontal, skin.size.s10)
         } else {

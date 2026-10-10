@@ -80,17 +80,16 @@ struct Sidebar: View {
             let waiting = statuses.filter { $0 == .needsYou }.count
             if working > 0 { Text("\(working) working") }
             if waiting > 0 { Text("\(waiting) needs you") }
-            switch (model.cli, model.codexCLI) {
-            case (.checking, _):
+            if model.cli == .checking {
                 Text("Looking for agents…")
-            case (.found(_, let claude), .found(_, let codex)):
-                Text("claude \(claude) · codex \(codex)")
-            case (.found(_, let version), _):
-                Text("claude \(version)")
-            case (_, .found(_, let version)):
-                Text("codex \(version)")
-            default:
-                Text("No coding agent found")
+            } else {
+                // Names only, so three agents fit; versions are in the tooltip and Settings.
+                let found = Harness.allCases.compactMap { harness -> (String, String)? in
+                    guard case .found(_, let version) = model.status(of: harness) else { return nil }
+                    return (harness.command, version)
+                }
+                Text(found.isEmpty ? "No coding agent found" : found.map(\.0).joined(separator: " · "))
+                    .help(found.map { "\($0.0) \($0.1)" }.joined(separator: "\n"))
             }
             Spacer(minLength: 0)
             if model.isLoading {
@@ -251,7 +250,8 @@ private struct ShowAllRow: View {
     }
 }
 
-/// Which agent a thread runs on: Claude in its brand clay, Codex in the foreground colour.
+/// Which agent a thread runs on: Claude in its brand clay, Codex in the
+/// foreground colour, OpenCode in the theme's tertiary accent.
 struct HarnessBadge: View {
     // design-lint: allow raw-color kit-gap colors.providerBrand (Claude's brand clay, as Sage's model picker)
     static let claudeTint = Color(.sRGB, red: 0xCC / 255, green: 0x78 / 255, blue: 0x5C / 255)
@@ -264,7 +264,15 @@ struct HarnessBadge: View {
     var body: some View {
         AinkradBadge(
             text: harness.displayName,
-            tint: onSelection || harness == .codex ? theme.foreground : Self.claudeTint)
+            tint: onSelection ? theme.foreground : tint)
+    }
+
+    private var tint: Color {
+        switch harness {
+        case .claude: Self.claudeTint
+        case .codex: theme.foreground
+        case .opencode: theme.accentTertiary
+        }
     }
 }
 
