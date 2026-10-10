@@ -33,7 +33,20 @@ struct GlassSweepTests {
         await model.reload()
         model.selectedThreadID = "glass"
         let deadline = Date().addingTimeInterval(5)
-        while model.entries.isEmpty, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        while model.current == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+
+        // Screen 4: the same thread waiting on a `git push` approval.
+        let waiting = GrimoireModel(settings: settings, sessionsRoot: root)
+        await waiting.reload()
+        waiting.selectedThreadID = "glass"
+        while waiting.current == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        let push: JSONValue = ["command": "git push -u origin feat/glass-sidebar"]
+        waiting.current?.apply(.block(messageID: "m9", .toolUse(id: "t9", name: "Bash", input: push)))
+        waiting.current?.apply(
+            .approval(
+                ApprovalRequest(
+                    id: "r9", toolUseID: "t9", toolName: "Bash", input: push, summary: "git push",
+                    suggestions: [["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "git push:*"]]]])))
 
         let empty = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
         await empty.reload()
@@ -48,6 +61,7 @@ struct GlassSweepTests {
                     danger: skin.color(skin.palette.danger)))
             let screens: [(String, AnyView)] = [
                 ("e42-thread", AnyView(RootView(model: model, theme: hostTheme))),
+                ("e43-approval", AnyView(RootView(model: waiting, theme: hostTheme))),
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
             ]
             for (name, view) in screens {

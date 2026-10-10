@@ -1,0 +1,197 @@
+import AinkradAppKit
+import SwiftUI
+
+/// Under the conversation: a pending approval docked above the composer, a
+/// status line while the agent works, and the composer.
+struct ThreadFooter: View {
+    let live: LiveThread
+    let model: GrimoireModel
+    let workingDirectory: String
+    @State private var draft = ""
+    @Environment(\.ainkradSkin) private var skin
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let request = live.pendingApproval {
+                ApprovalBar(request: request, workingDirectory: workingDirectory, live: live)
+            }
+            StatusLine(live: live)
+            AinkradComposer(
+                text: $draft, placeholder: "Message Claude… (/ for commands, @ for files)", isEditable: true,
+                canSend: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, autoFocus: true,
+                suggestions: suggestions, onPick: { _, _ in }, onDrop: nil, onSend: send
+            ) {
+                EmptyView()
+            } leading: {
+                modeMenu
+                modelMenu
+            } trailing: {
+                if live.status == .working || live.status == .needsYou {
+                    AinkradButton(title: "Stop", style: .danger, icon: "stop.fill") { live.interrupt() }
+                        .fixedSize()
+                }
+            }
+            .padding(.horizontal, skin.size.s14)
+            .padding(.bottom, skin.size.s14)
+        }
+        // Start the agent as soon as there is something to say, so `/` lists
+        // the CLI's own commands by the time you look.
+        .onChange(of: draft) { _, text in if !text.isEmpty { live.ensureStarted() } }
+    }
+
+    private func send() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        draft = ""
+        live.send(text)
+    }
+
+    private func suggestions(_ trigger: AinkradComposerTrigger) -> [AinkradComposerSuggestion] {
+        switch trigger {
+        case .command(let query):
+            return live.commands
+                .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+                .prefix(40)
+                .map {
+                    AinkradComposerSuggestion(
+                        id: $0.name, icon: "chevron.right.circle", title: "/\($0.name)", subtitle: $0.description,
+                        insertText: "/\($0.name)")
+                }
+        case .mention(let query):
+            return ProjectFiles.search(model.files(in: workingDirectory), query: query).map {
+                AinkradComposerSuggestion(
+                    id: $0, icon: "doc.text", title: ($0 as NSString).lastPathComponent, subtitle: $0,
+                    insertText: "@\($0)")
+            }
+        @unknown default:
+            return []
+        }
+    }
+
+    private var modeMenu: some View {
+        AinkradMenuButton(
+            items: PermissionMode.allCases.map { mode in
+                AinkradMenuItem(title: mode.title, systemName: mode == live.mode ? "checkmark" : nil) {
+                    live.setMode(mode)
+                }
+            }
+        ) {
+            PullDownLabel { MenuValue(caption: "Mode", value: live.mode.title) }
+        }
+        .fixedSize()
+        .help("Permission mode")
+    }
+
+    private var modelMenu: some View {
+        AinkradMenuButton(
+            items: ["opus", "sonnet", "haiku"].map { alias in
+                AinkradMenuItem(title: alias.capitalized) { live.setModel(alias) }
+            }
+        ) {
+            PullDownLabel {
+                MenuValue(caption: "Model", value: live.model.map(ModelName.display) ?? "Default")
+            }
+        }
+        .fixedSize()
+        .help("Model")
+    }
+}
+
+extension PermissionMode {
+    var title: String {
+        switch self {
+        case .ask: "Ask"
+        case .acceptEdits: "Accept edits"
+        case .plan: "Plan"
+        case .bypassPermissions: "Bypass"
+        }
+    }
+}
+
+/// "MODE Ask": a faint caption and the value, inside a pull-down label.
+private struct MenuValue: View {
+    let caption: String
+    let value: String
+    @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: skin.size.s6) {
+            Text(skin.labelCased(caption))
+                .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
+                .foregroundStyle(skin.color(skin.text.faint))
+            Text(value)
+                .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+                .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+        }
+    }
+}
+
+/// The approval the agent is waiting on, docked above the composer.
+private struct ApprovalBar: View {
+    let request: ApprovalRequest
+    let workingDirectory: String
+    let live: LiveThread
+
+    var body: some View {
+        let argument = ToolSummary.argument(
+            name: request.toolName, input: request.input, workingDirectory: workingDirectory)
+        var actions: [AinkradDecisionBar.Action] = [
+            .init(title: "Deny", style: .ghost) { live.answer(.deny(reason: "Denied in Grimoire.")) }
+        ]
+        if !request.suggestions.isEmpty {
+            actions.append(.init(title: "Always allow", style: .secondary) { live.answer(.allowAlways) })
+        }
+        actions.append(.init(title: "Allow once", style: .primary) { live.answer(.allow) })
+        return AinkradDecisionBar(
+            icon: request.toolName == "Bash" ? "terminal" : "pencil", iconTint: .primary,
+            caption: "Approval required", title: "\(request.toolName) \(argument)", actions: actions)
+    }
+}
+
+/// What the agent is doing right now, and for how long.
+private struct StatusLine: View {
+    let live: LiveThread
+    @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradStatusColors) private var statusColors
+
+    var body: some View {
+        switch live.status {
+        case .working:
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                line(dot: theme.accentSecondary, text: "Working…", detail: elapsed(at: context.date))
+            }
+        case .needsYou:
+            line(dot: statusColors.warning, text: "Waiting for your approval", detail: nil)
+        case .failed(let message):
+            line(dot: statusColors.danger, text: message, detail: nil)
+        case .idle:
+            if live.costUSD > 0 {
+                line(
+                    dot: statusColors.success, text: "Done", detail: String(format: "$%.2f this session", live.costUSD))
+            }
+        }
+    }
+
+    private func elapsed(at now: Date) -> String? {
+        guard let start = live.turnStartedAt else { return nil }
+        let seconds = Int(now.timeIntervalSince(start))
+        return seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
+    }
+
+    private func line(dot: Color, text: String, detail: String?) -> some View {
+        HStack(spacing: skin.size.s8) {
+            Circle().fill(dot).frame(width: skin.size.s7, height: skin.size.s7)
+            Text(text).lineLimit(1)
+            if let detail {
+                Text(detail).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
+                    .foregroundStyle(skin.color(skin.text.faint))
+            }
+        }
+        .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+        .foregroundStyle(skin.color(skin.text.muted))
+        .padding(.horizontal, skin.size.s20)
+        .padding(.vertical, skin.size.s6)
+    }
+}

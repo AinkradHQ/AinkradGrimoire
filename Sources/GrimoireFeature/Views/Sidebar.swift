@@ -58,7 +58,10 @@ struct Sidebar: View {
         }
         if expanded {
             ForEach(project.sessions) { thread in
-                ThreadRow(thread: thread, isSelected: thread.id == model.selectedThreadID) {
+                ThreadRow(
+                    thread: thread, status: model.liveThreads[thread.id]?.status,
+                    isSelected: thread.id == model.selectedThreadID
+                ) {
                     model.selectedThreadID = thread.id
                 }
             }
@@ -67,6 +70,11 @@ struct Sidebar: View {
 
     private var footer: some View {
         HStack(spacing: skin.size.s6) {
+            let statuses = model.liveThreads.values.map(\.status)
+            let working = statuses.filter { $0 == .working }.count
+            let waiting = statuses.filter { $0 == .needsYou }.count
+            if working > 0 { Text("\(working) working") }
+            if waiting > 0 { Text("\(waiting) needs you") }
             switch model.cli {
             case .found(_, let version):
                 Text("claude \(version)")
@@ -130,17 +138,58 @@ private struct ProjectRow: View {
     }
 }
 
+/// Cyan pulse while working, amber when it needs you, red after a failure;
+/// an empty slot keeps titles aligned.
+private struct StatusDot: View {
+    let status: LiveThread.Status?
+    @State private var dim = false
+    @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradStatusColors) private var statusColors
+    @Environment(\.ainkradReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: skin.size.s7, height: skin.size.s7)
+            .opacity(status == .working && dim ? skin.opacity.o35 : 1)
+            .onAppear { pulse() }
+            .onChange(of: status) { pulse() }
+    }
+
+    private var color: Color {
+        switch status {
+        case .working: theme.accentSecondary
+        case .needsYou: statusColors.warning
+        case .failed: statusColors.danger
+        case .idle, nil: .clear
+        }
+    }
+
+    private func pulse() {
+        guard status == .working, !reduceMotion else {
+            dim = false
+            return
+        }
+        withAnimation(skin.animation(skin.motion.hover).repeatForever(autoreverses: true)) { dim = true }
+    }
+}
+
 private struct ThreadRow: View {
     let thread: ClaudeSessionSummary
+    /// Set while the thread is open this run; drives the status dot.
+    let status: LiveThread.Status?
     let isSelected: Bool
     let select: () -> Void
     @State private var isHovered = false
     @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradStatusColors) private var statusColors
     @Environment(\.ainkradTheme) private var theme
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s3) {
             HStack(spacing: skin.size.s8) {
+                StatusDot(status: status)
                 Text(thread.title)
                     .font(skin.font(AinkradFontToken(sizeKey: "t13")))
                     .foregroundStyle(theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
@@ -157,10 +206,17 @@ private struct ThreadRow: View {
                 if let worktree = thread.worktree {
                     AinkradBadge(text: "⑂ \(worktree)", tint: isSelected ? theme.foreground : theme.accentSecondary)
                 }
+                if status == .needsYou {
+                    Text("needs you").foregroundStyle(statusColors.warning)
+                } else if case .failed = status {
+                    Text("failed").foregroundStyle(statusColors.danger)
+                }
             }
+            .font(skin.font(AinkradFontToken(sizeKey: "t11")))
+            .padding(.leading, skin.size.s15)
         }
         .padding(.vertical, skin.size.s6)
-        .padding(.leading, skin.size.s20)
+        .padding(.leading, skin.size.s8)
         .padding(.trailing, skin.size.s8)
         .ainkradRowBackground(isSelected: isSelected, isHovered: isHovered)
         .contentShape(Rectangle())
