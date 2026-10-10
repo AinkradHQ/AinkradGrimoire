@@ -3,9 +3,8 @@ import Foundation
 import Observation
 
 /// Small `Codable` state through the host's key→data store — see
-/// `HostServices.documents`. Observable, so a view that reads it re-renders the
-/// moment the settings page changes it. Setting `showGreeting` is the store's
-/// one action: it updates the value and persists it.
+/// `HostServices.documents`. Observable, so views re-render when it changes;
+/// every mutation persists.
 @MainActor
 @Observable
 final class SettingsStore {
@@ -25,13 +24,29 @@ final class SettingsStore {
         self.canSave = loaded.canSave
     }
 
-    /// Whether the root view shows its greeting.
-    var showGreeting: Bool {
-        get { document.showGreeting }
-        set {
-            document.showGreeting = newValue
-            save()
+    var openedFolders: [String] { document.openedFolders }
+
+    func addFolder(_ path: String) {
+        guard !document.openedFolders.contains(path) else { return }
+        document.openedFolders.append(path)
+        save()
+    }
+
+    /// Whether `project` shows its threads. Before the user has toggled any,
+    /// only `mostRecent` is expanded.
+    func isExpanded(_ project: String, mostRecent: String?) -> Bool {
+        document.expandedProjects?.contains(project) ?? (project == mostRecent)
+    }
+
+    func toggle(_ project: String, mostRecent: String?) {
+        var expanded = document.expandedProjects ?? mostRecent.map { [$0] } ?? []
+        if let index = expanded.firstIndex(of: project) {
+            expanded.remove(at: index)
+        } else {
+            expanded.append(project)
         }
+        document.expandedProjects = expanded
+        save()
     }
 
     private func save() {
