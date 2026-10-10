@@ -44,7 +44,7 @@ struct NewThreadSheet: View {
                 HStack(spacing: skin.size.s8) {
                     AinkradSegmentedPicker(items: Self.installed(model), selection: $harness) { $0.displayName }
                         .fixedSize()
-                    Text("OpenCode and agy are coming")
+                    Text("agy is coming")
                         .font(skin.font(AinkradFontToken(sizeKey: "t11")))
                         .foregroundStyle(skin.color(skin.text.faint))
                 }
@@ -63,7 +63,7 @@ struct NewThreadSheet: View {
                     AinkradSegmentedPicker(items: ["opus", "sonnet", "haiku"], selection: $agentModel) { $0.capitalized }
                         .fixedSize()
                 } else {
-                    Text("Codex's default, from its config")
+                    Text("\(harness.displayName)'s default, from its config")
                         .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                         .foregroundStyle(skin.color(skin.text.muted))
                 }
@@ -130,11 +130,11 @@ struct NewThreadSheet: View {
         return found.isEmpty ? [.claude] : found
     }
 
-    /// Worktrees are Claude Code's `--worktree`; Codex has none.
+    /// Worktrees are Claude Code's `--worktree`; the other agents have none.
     private var canUseWorktree: Bool { isGitRepository && harness == .claude }
 
     private var worktreeNote: String {
-        if harness != .claude { return "Codex works in the folder itself" }
+        if harness != .claude { return "\(harness.displayName) works in the folder itself" }
         return isGitRepository ? "Work in a separate git worktree" : "Not a git repository"
     }
 

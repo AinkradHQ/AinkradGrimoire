@@ -22,15 +22,16 @@ final class GrimoireModel {
 
     /// Settable for tests; the app only changes them in `reload()`.
     var cli: CLIStatus = .checking
-    var codexCLI: CLIStatus = .checking
-    /// Found when any agent is: Claude's status unless only Codex is installed.
+    /// Codex's and OpenCode's CLIs, as their listers found them.
+    var otherCLIs: [Harness: CLIStatus] = [:]
+    /// Found when any agent is: Claude's status unless only another agent is installed.
     var agentStatus: CLIStatus {
-        if case .found = codexCLI, case .missing = cli { return codexCLI }
-        return cli
+        guard case .missing = cli else { return cli }
+        return otherCLIs.values.first { if case .found = $0 { true } else { false } } ?? cli
     }
 
     func status(of harness: Harness) -> CLIStatus {
-        harness == .codex ? codexCLI : cli
+        harness == .claude ? cli : otherCLIs[harness] ?? .checking
     }
     /// Projects and threads as listed from the CLI's session files.
     private var listed: [ClaudeProject] = []
@@ -73,11 +74,26 @@ final class GrimoireModel {
     /// Why the last "open in Rune" didn't happen; cleared on the next try.
     private(set) var terminalProblem: String?
     private let sessionsRoot: URL
-    /// Finds `codex` and lists its threads; `nil` skips Codex. Tests hand in fixtures.
-    var listCodex: (@Sendable ([String: String]) -> (CLIStatus, [ClaudeSessionSummary]))? = { environment in
-        let codex = GrimoireModel.detectCLI(command: "codex", environment: environment).status
-        guard case .found(let path, _) = codex else { return (codex, []) }
-        return (codex, CodexSessions.summaries(executable: URL(fileURLWithPath: path), environment: environment))
+    typealias Lister = @Sendable ([String: String]) async -> (CLIStatus, [ClaudeSessionSummary])
+    /// Finds each non-Claude CLI and lists its threads; a harness without one
+    /// counts as missing. Tests hand in fixtures.
+    var listers: [Harness: Lister] = [:]
+    private let openCode = OpenCodeServerBox()
+
+    static func listers(openCode: OpenCodeServerBox) -> [Harness: Lister] {
+        [
+            .codex: { environment in
+                let codex = GrimoireModel.detectCLI(command: "codex", environment: environment).status
+                guard case .found(let path, _) = codex else { return (codex, []) }
+                return (codex, CodexSessions.summaries(executable: URL(fileURLWithPath: path), environment: environment))
+            },
+            .opencode: { environment in
+                let status = GrimoireModel.detectCLI(command: "opencode", environment: environment).status
+                guard case .found(let path, _) = status else { return (status, []) }
+                let server = openCode.server(executable: URL(fileURLWithPath: path), environment: environment)
+                return (status, await OpenCodeSessions.summaries(server: server))
+            },
+        ]
     }
     private var activation: NSObjectProtocol?
 
@@ -87,8 +103,8 @@ final class GrimoireModel {
     ) {
         self.settings = settings
         self.sessionsRoot = sessionsRoot
-        // A model on a fixture root is a test: it never runs the real `codex`.
-        if sessionsRoot != ClaudeSessions.defaultRoot { listCodex = nil }
+        // A model on a fixture root is a test: it never runs the real `codex` or `opencode`.
+        if sessionsRoot == ClaudeSessions.defaultRoot { listers = Self.listers(openCode: openCode) }
         self.signals = signals
         self.apps = apps
     }
@@ -134,15 +150,20 @@ final class GrimoireModel {
         defer { isLoading = false }
         let root = sessionsRoot
         let override = settings.cliPathOverride
-        let listCodex = listCodex
-        let (detected, codex, listed) = await Task.detached(priority: .userInitiated) {
+        let listers = listers
+        let (detected, others, listed) = await Task.detached(priority: .userInitiated) {
             let detected = Self.detectCLI(override: override)
-            let (codex, threads) = listCodex?(detected.environment) ?? (.missing(searched: ""), [])
-            let claude = ClaudeSessions.projects(root: root).flatMap(\.sessions)
-            return (detected, codex, ClaudeSessions.grouped(claude + threads))
+            var others: [Harness: CLIStatus] = [:]
+            var threads = ClaudeSessions.projects(root: root).flatMap(\.sessions)
+            for harness in Harness.allCases where harness != .claude {
+                let (status, listed) = await listers[harness]?(detected.environment) ?? (.missing(searched: ""), [])
+                others[harness] = status
+                threads += listed
+            }
+            return (detected, others, ClaudeSessions.grouped(threads))
         }.value
         cli = detected.status
-        codexCLI = codex
+        otherCLIs = others
         environment = detected.environment
         self.listed = listed
         // A draft is done once its session shows up in the listing.
@@ -161,7 +182,7 @@ final class GrimoireModel {
         harness: Harness = .claude
     ) {
         let placeholder = "new-\(UUID().uuidString)"
-        // Codex has no worktree flag.
+        // Only Claude Code has a worktree flag.
         let worktreeName = worktree && harness == .claude ? Self.worktreeName(for: prompt) : nil
         let draft = ClaudeSessionSummary(
             id: placeholder, harness: harness, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: project,
@@ -250,17 +271,21 @@ final class GrimoireModel {
         current = nil
         let id = thread.id
         isLoadingThread = true
-        let codex = codexCLI
+        let status = status(of: thread.harness)
         let environment = environment
+        let openCode = openCode.current
         Task {
             let loaded = await Task.detached(priority: .userInitiated) { () -> [ThreadEntry] in
-                switch (thread.harness, codex) {
+                switch (thread.harness, status) {
+                case (.claude, _): ThreadEntries.build((try? ClaudeSessions.history(of: thread.fileURL)) ?? [])
                 case (.codex, .found(let path, _)):
                     ThreadEntries.build(
                         CodexSessions.history(
                             threadID: thread.id, executable: URL(fileURLWithPath: path), environment: environment))
-                case (.codex, _): []
-                case (.claude, _): ThreadEntries.build((try? ClaudeSessions.history(of: thread.fileURL)) ?? [])
+                case (.opencode, .found):
+                    if let openCode { ThreadEntries.build(await OpenCodeSessions.history(of: thread, server: openCode)) }
+                    else { [] }
+                case (.codex, _), (.opencode, _): []
                 }
             }.value
             guard selectedThreadID == id else { return }
@@ -339,6 +364,8 @@ final class GrimoireModel {
         switch harness {
         case .claude: return ClaudeEngine(executable: executable, environment: environment)
         case .codex: return CodexEngine(executable: executable, environment: environment)
+        case .opencode:
+            return OpenCodeEngine(server: openCode.server(executable: executable, environment: environment))
         }
     }
 

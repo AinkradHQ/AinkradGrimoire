@@ -33,10 +33,10 @@ struct SettingsView: View {
                         agentRow(badge: "Claude", tint: HarnessBadge.claudeTint, detail: detail(model.cli)) {
                             AinkradButton(title: "Change…", style: .secondary) { chooseCLI() }.fixedSize()
                         }
-                        agentRow(badge: "Codex", tint: theme.foreground, detail: detail(model.codexCLI)) {
+                        agentRow(badge: "Codex", tint: theme.foreground, detail: detail(model.status(of: .codex))) {
                             EmptyView()
                         }
-                        agentRow(badge: "OpenCode", tint: theme.accentTertiary, detail: "Coming in a later version") {
+                        agentRow(badge: "OpenCode", tint: theme.accentTertiary, detail: detail(model.status(of: .opencode))) {
                             EmptyView()
                         }
                         agentRow(badge: "agy", tint: theme.accentPrimary, detail: "Coming in a later version") {

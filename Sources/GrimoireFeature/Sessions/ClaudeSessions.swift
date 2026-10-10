@@ -4,11 +4,13 @@ import Foundation
 public enum Harness: String, Sendable, CaseIterable {
     case claude
     case codex
+    case opencode
 
     public var displayName: String {
         switch self {
         case .claude: "Claude"
         case .codex: "Codex"
+        case .opencode: "OpenCode"
         }
     }
 

@@ -65,7 +65,7 @@ struct GlassSweepTests {
 
         // E6: a Codex thread beside Claude's — its badge, a command, a patch and its plan.
         let codexing = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
-        codexing.listCodex = SampleSessions.codex
+        codexing.listers[.codex] = SampleSessions.codex
         await codexing.reload()
         codexing.engineOverride = { FakeEngine() }
         codexing.startThread(
@@ -73,15 +73,25 @@ struct GlassSweepTests {
             worktree: false, harness: .codex)
         for event in SampleSessions.codexTurn { codexing.current?.apply(event) }
 
+        // E7: an OpenCode thread waiting on an edit approval.
+        let opencoding = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        opencoding.listers = [.codex: SampleSessions.codex, .opencode: SampleSessions.openCode]
+        await opencoding.reload()
+        opencoding.engineOverride = { FakeEngine() }
+        opencoding.startThread(
+            project: "/Users/me/Projects/Ainkrad", prompt: "Rename the Scry cache key", model: nil, mode: .ask,
+            worktree: false, harness: .opencode)
+        for event in SampleSessions.openCodeTurn { opencoding.current?.apply(event) }
+
         // Screen 7: the New thread sheet over the window.
         let composing = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
-        composing.listCodex = SampleSessions.codex
+        composing.listers = [.codex: SampleSessions.codex, .opencode: SampleSessions.openCode]
         await composing.reload()
         composing.isComposingNewThread = true
 
         // Screen 8: Settings, with usage a thread reported.
         let configuring = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
-        configuring.listCodex = SampleSessions.codex
+        configuring.listers = [.codex: SampleSessions.codex, .opencode: SampleSessions.openCode]
         await configuring.reload()
         configuring.engineOverride = { FakeEngine() }
         configuring.startThread(
@@ -123,6 +133,7 @@ struct GlassSweepTests {
                 ("e47-new-thread", AnyView(RootView(model: composing, theme: hostTheme))),
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
                 ("e6-codex-thread", AnyView(RootView(model: codexing, theme: hostTheme))),
+                ("e7-opencode-thread", AnyView(RootView(model: opencoding, theme: hostTheme))),
             ]
             for (name, view) in screens {
                 try LiveGlassCapture.shoot(
@@ -172,7 +183,7 @@ struct GlassSweepTests {
 /// A `~/.claude/projects`-shaped folder with made-up sessions.
 enum SampleSessions {
     /// A found `codex` with one stored thread.
-    static let codex: @Sendable ([String: String]) -> (CLIStatus, [ClaudeSessionSummary]) = { _ in
+    static let codex: GrimoireModel.Lister = { _ in
         (
             .found(path: "/opt/homebrew/bin/codex", version: "0.154.0"),
             [
@@ -184,6 +195,38 @@ enum SampleSessions {
             ]
         )
     }
+
+    /// A found `opencode` with one stored session.
+    static let openCode: GrimoireModel.Lister = { _ in
+        (
+            .found(path: "/opt/homebrew/bin/opencode", version: "1.18.34"),
+            [
+                ClaudeSessionSummary(
+                    id: "ses_1", harness: .opencode, fileURL: URL(fileURLWithPath: "/dev/null"),
+                    workingDirectory: "/Users/me/Projects/GitScope", projectPath: "/Users/me/Projects/GitScope",
+                    title: "Draft the ADR for graph paging", model: "google/gemini-2.5-flash",
+                    lastActivity: Date(timeIntervalSinceNow: -40 * 60))
+            ]
+        )
+    }
+
+    /// One OpenCode turn, stopped on an edit it wants to make.
+    static let openCodeTurn: [EngineEvent] = {
+        let edit: JSONValue = [
+            "file_path": "/Users/me/Projects/Ainkrad/Sources/Scry/ScryCache.swift",
+            "old_string": "static let key = \"scry.cache\"", "new_string": "static let key = \"scry.cache.v2\"",
+        ]
+        return [
+            .block(messageID: "r1", .thinking("The cache key changes, so old entries must not be read back.")),
+            .block(messageID: "c1", .toolUse(id: "c1", name: "Grep", input: ["pattern": "scry.cache", "path": "Sources"])),
+            .toolResult(toolUseID: "c1", content: "Sources/Scry/ScryCache.swift:12", isError: false),
+            .block(messageID: "c2", .toolUse(id: "c2", name: "Edit", input: edit)),
+            .approval(
+                ApprovalRequest(
+                    id: "per_1", toolUseID: "c2", toolName: "Edit", input: edit, summary: "Sources/Scry/ScryCache.swift",
+                    suggestions: [["always": ["*"]]])),
+        ]
+    }()
 
     /// One Codex turn as its engine reports it.
     static let codexTurn: [EngineEvent] = {
