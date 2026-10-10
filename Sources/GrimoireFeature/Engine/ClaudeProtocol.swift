@@ -29,6 +29,8 @@ struct ClaudeProtocol {
         if let resume = options.resume {
             arguments += ["--resume", resume]
             if options.fork { arguments.append("--fork-session") }
+        } else if let worktree = options.worktree {
+            arguments += ["--worktree", worktree]
         }
         return arguments
     }
@@ -146,18 +148,22 @@ struct ClaudeProtocol {
 
     private static func assistant(_ message: JSONValue) -> [EngineEvent] {
         let messageID = message["message"]?["id"]?.stringValue ?? ""
-        return (message["message"]?["content"]?.arrayValue ?? []).compactMap { block in
+        return blocks(of: message["message"]).map { .block(messageID: messageID, $0) }
+    }
+
+    /// An assistant message's content blocks. Shared with stored sessions,
+    /// which hold the same message shape.
+    static func blocks(of message: JSONValue?) -> [AssistantBlock] {
+        (message?["content"]?.arrayValue ?? []).compactMap { block in
             switch block["type"]?.stringValue {
             case "text":
-                return .block(messageID: messageID, .text(block["text"]?.stringValue ?? ""))
+                return .text(block["text"]?.stringValue ?? "")
             case "thinking":
-                return .block(messageID: messageID, .thinking(block["thinking"]?.stringValue ?? ""))
+                return .thinking(block["thinking"]?.stringValue ?? "")
             case "tool_use":
-                return .block(
-                    messageID: messageID,
-                    .toolUse(
-                        id: block["id"]?.stringValue ?? "", name: block["name"]?.stringValue ?? "",
-                        input: block["input"] ?? .null))
+                return .toolUse(
+                    id: block["id"]?.stringValue ?? "", name: block["name"]?.stringValue ?? "",
+                    input: block["input"] ?? .null)
             default:
                 return nil
             }
@@ -175,7 +181,7 @@ struct ClaudeProtocol {
     }
 
     /// A tool result's content is a string, or a list of blocks whose text parts count.
-    private static func text(of content: JSONValue?) -> String {
+    static func text(of content: JSONValue?) -> String {
         if let string = content?.stringValue { return string }
         return (content?.arrayValue ?? []).compactMap { $0["text"]?.stringValue }.joined(separator: "\n")
     }

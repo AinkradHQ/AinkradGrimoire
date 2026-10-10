@@ -82,12 +82,12 @@ struct ClaudeEngineLiveTests {
         #expect(try String(contentsOf: notes, encoding: .utf8) == "hello friend\n")
 
         // 3. Interrupt mid-stream: the turn ends as interrupted, the session lives on.
-        try engine.send("Count from 1 to 300, one number per line, nothing else.", images: [])
+        try engine.send("Count from 1 to 2000, one number per line, nothing else.", images: [])
         _ = await events.next({ if case .textDelta = $0 { true } else { false } })
         try engine.interrupt()
         let interrupted = await events.next(Self.isTurnEnd)
         guard case .turnFinished(let result) = interrupted else { return }
-        #expect(result.outcome == .interrupted)
+        #expect(result.outcome == .interrupted, "outcome: \(result.outcome), text: \(result.text ?? "-")")
         let sessionID = result.sessionID
 
         engine.stop()
