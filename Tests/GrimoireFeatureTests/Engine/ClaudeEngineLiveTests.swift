@@ -50,8 +50,19 @@ struct ClaudeEngineLiveTests {
 
     @Test("approve-always, interrupt, then resume as a fork")
     func session() async throws {
-        let work = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-live-\(UUID())")
+        let marker = "grimoire-live-\(UUID())"
+        let work = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(marker)
         try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        // The CLI records every session under ~/.claude/projects/<slug of the cwd>;
+        // remove ours so test runs don't pile up in the user's history.
+        defer {
+            try? FileManager.default.removeItem(at: work)
+            let projects = ClaudeSessions.defaultRoot
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: projects.path)) ?? []
+            where name.contains(marker) {
+                try? FileManager.default.removeItem(at: projects.appendingPathComponent(name))
+            }
+        }
         let notes = work.appendingPathComponent("notes.txt")
         try "hello world\n".write(to: notes, atomically: true, encoding: .utf8)
 
@@ -110,5 +121,7 @@ struct ClaudeEngineLiveTests {
         guard case .turnFinished(let forkResult) = answer else { return }
         #expect(forkResult.text?.lowercased().contains("there") == true)
         fork.stop()
+        // The CLI writes its session file on the way out; let it finish before cleanup.
+        _ = await forkEvents.next({ if case .exited = $0 { true } else { false } })
     }
 }
