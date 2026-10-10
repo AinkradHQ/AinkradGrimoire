@@ -17,6 +17,6 @@
          exact line. Never hand-edit the number. -->
     <key>AinkradAPIVersion</key><integer>11</integer>
     <key>AinkradAuthor</key><string>Ahmed Elhalaby</string>
-    <key>description</key><string>Claude Code, Codex, OpenCode and agy in one native app.</string>
+    <key>description</key><string>Claude Code in a native window: threads, live turns, approvals, review and commit.</string>
 </dict>
 </plist>

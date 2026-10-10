@@ -13,13 +13,10 @@ sideload: build
 	mkdir -p "$(DEV_PLUGINS)"
 	rm -rf "$(DEV_PLUGINS)/GrimoirePlugin.bundle"
 	cp -R build/Build/Products/Debug/GrimoirePlugin.bundle "$(DEV_PLUGINS)/GrimoirePlugin.bundle"
-# Publishing goes through `ainkrad publish` and nowhere else: it validates the
-# bundle as the store does, signs it ($SIGN_IDENTITY, or --sign-identity in
-# PUBLISH_FLAGS), creates the GitHub Release and lists it in AinkradCatalog.
-#   SIGN_IDENTITY="Developer ID Application: ..." make release V=v1.0.0
-#   make release V=v1.0.0 PUBLISH_FLAGS="--dry-run --sign-identity -"   # plan only
-AINKRAD ?= ainkrad
-release: releasebuild ; $(AINKRAD) publish build/Build/Products/Release/GrimoirePlugin.bundle $(V) $(PUBLISH_FLAGS)
+# Releasing goes through scripts/release.sh, never `ainkrad publish` alone: it
+# builds clean, Developer-ID signs, publishes the GitHub release and updates the
+# catalog. SIGN_IDENTITY="Developer ID Application: ..." make release V=v0.1.0
+release: ; ./scripts/release.sh $(V)
 
 .PHONY: generate build test releasebuild sideload release
 
