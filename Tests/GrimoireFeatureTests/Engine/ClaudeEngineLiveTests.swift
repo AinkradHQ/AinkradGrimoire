@@ -124,4 +124,45 @@ struct ClaudeEngineLiveTests {
         // The CLI writes its session file on the way out; let it finish before cleanup.
         _ = await forkEvents.next({ if case .exited = $0 { true } else { false } })
     }
+
+    @Test("a LiveThread talks to the real CLI: streams, asks, finishes")
+    func liveThread() async throws {
+        let marker = "grimoire-live-\(UUID())"
+        let work = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(marker)
+        try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
+        try "hello world\n".write(to: work.appendingPathComponent("notes.txt"), atomically: true, encoding: .utf8)
+        defer {
+            try? FileManager.default.removeItem(at: work)
+            let projects = ClaudeSessions.defaultRoot
+            for name in (try? FileManager.default.contentsOfDirectory(atPath: projects.path)) ?? []
+            where name.contains(marker) {
+                try? FileManager.default.removeItem(at: projects.appendingPathComponent(name))
+            }
+        }
+        let engine = try makeEngine()
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: work, model: "haiku", permissionMode: .ask),
+            makeEngine: { engine })
+        live.send("Use the Edit tool to change 'world' to 'there' in notes.txt. Reply DONE.")
+
+        let deadline = ContinuousClock.now + .seconds(120)
+        while live.pendingApproval == nil, live.status != .idle, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(live.pendingApproval?.toolName == "Edit")
+        live.answer(.allow)
+        while live.status != .idle, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        #expect(live.status == .idle)
+        #expect(live.sessionID != nil)
+        #expect(
+            live.entries.contains {
+                if case .tool(let call) = $0 { call.name == "Edit" && call.result != nil } else { false }
+            })
+        #expect(live.entries.contains { if case .text(let text) = $0 { text.contains("DONE") } else { false } })
+        #expect(try String(contentsOf: work.appendingPathComponent("notes.txt"), encoding: .utf8) == "hello there\n")
+        live.stop()
+        while live.isRunning, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(100)) }
+    }
 }

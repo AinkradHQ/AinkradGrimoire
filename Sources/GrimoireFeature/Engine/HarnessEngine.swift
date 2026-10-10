@@ -134,3 +134,20 @@ public enum EngineEvent: Sendable, Equatable {
     case error(String)
     case exited(code: Int32)
 }
+
+/// Stands in when no CLI was found: starting it fails with a clear reason.
+@MainActor
+final class UnavailableEngine: HarnessEngine {
+    struct NotInstalled: LocalizedError {
+        var errorDescription: String? { "Claude Code isn't installed or wasn't found on your PATH." }
+    }
+
+    let events = AsyncStream<EngineEvent> { $0.finish() }
+    func start(_ options: EngineStartOptions) throws { throw NotInstalled() }
+    func send(_ text: String, images: [EngineImage]) throws { throw NotInstalled() }
+    func interrupt() throws {}
+    func answer(_ request: ApprovalRequest, with decision: ApprovalDecision) throws {}
+    func setPermissionMode(_ mode: PermissionMode) throws {}
+    func setModel(_ model: String) throws {}
+    func stop() {}
+}

@@ -25,9 +25,14 @@ final class GrimoireModel {
     var selectedThreadID: String? {
         didSet { if selectedThreadID != oldValue { loadSelectedThread() } }
     }
-    /// The selected thread, ready to draw. Empty while it loads.
-    private(set) var entries: [ThreadEntry] = []
+    /// The selected thread, ready to draw and talk to. `nil` while it loads.
+    private(set) var current: LiveThread?
     private(set) var isLoadingThread = false
+    /// Every thread opened this run, by session id — they keep running when
+    /// you switch away.
+    private(set) var liveThreads: [String: LiveThread] = [:]
+    /// The login shell's environment, handed to every agent process.
+    private var environment: [String: String] = [:]
     var searchText = ""
     var showsAllProjects = false
 
@@ -56,10 +61,11 @@ final class GrimoireModel {
         isLoading = true
         defer { isLoading = false }
         let root = sessionsRoot
-        let (cli, listed) = await Task.detached(priority: .userInitiated) {
+        let (detected, listed) = await Task.detached(priority: .userInitiated) {
             (Self.detectCLI(), ClaudeSessions.projects(root: root))
         }.value
-        self.cli = cli
+        cli = detected.status
+        environment = detected.environment
         projects = Self.merge(listed, openedFolders: settings.openedFolders)
     }
 
@@ -68,11 +74,19 @@ final class GrimoireModel {
         projects = Self.merge(projects, openedFolders: settings.openedFolders)
     }
 
-    /// Reads the selected thread's session file off the main thread. A slower
-    /// load for an earlier selection never overwrites a newer one.
+    /// Opens the selected thread: the live one if it was opened before, else
+    /// its session file read off the main thread. A slower load for an earlier
+    /// selection never overwrites a newer one.
     private func loadSelectedThread() {
-        entries = []
-        guard let thread = selectedThread else { return }
+        guard let thread = selectedThread else {
+            current = nil
+            return
+        }
+        if let live = liveThreads[thread.id] {
+            current = live
+            return
+        }
+        current = nil
         let id = thread.id
         isLoadingThread = true
         Task {
@@ -80,9 +94,35 @@ final class GrimoireModel {
                 ThreadEntries.build((try? ClaudeSessions.history(of: thread.fileURL)) ?? [])
             }.value
             guard selectedThreadID == id else { return }
-            entries = loaded
+            let live = LiveThread(
+                entries: loaded,
+                startOptions: EngineStartOptions(
+                    workingDirectory: URL(fileURLWithPath: thread.workingDirectory), resume: thread.id),
+                model: thread.model, makeEngine: { [weak self] in self?.makeEngine() ?? UnavailableEngine() })
+            liveThreads[id] = live
+            current = live
             isLoadingThread = false
         }
+    }
+
+    /// Files under `directory` for `@` suggestions. Returns what is known now
+    /// and lists the folder in the background the first time it's asked for.
+    private var projectFiles: [String: [String]] = [:]
+    func files(in directory: String) -> [String] {
+        if let files = projectFiles[directory] { return files }
+        projectFiles[directory] = []
+        Task {
+            let listed = await Task.detached(priority: .utility) {
+                ProjectFiles.list(root: URL(fileURLWithPath: directory))
+            }.value
+            projectFiles[directory] = listed
+        }
+        return []
+    }
+
+    private func makeEngine() -> HarnessEngine {
+        guard case .found(let path, _) = cli else { return UnavailableEngine() }
+        return ClaudeEngine(executable: URL(fileURLWithPath: path), environment: environment)
     }
 
     // MARK: - What the sidebar shows
@@ -125,11 +165,14 @@ final class GrimoireModel {
         return projects + openedFolders.filter { !known.contains($0) }.map { ClaudeProject(path: $0, sessions: []) }
     }
 
-    nonisolated static func detectCLI() -> CLIStatus {
+    nonisolated static func detectCLI() -> (status: CLIStatus, environment: [String: String]) {
         let environment = CLILocator.loginEnvironment()
         let path = environment["PATH"] ?? ""
-        guard let executable = CLILocator.locate("claude", path: path) else { return .missing(searched: path) }
-        return .found(path: executable.path, version: version(of: executable, environment: environment) ?? "")
+        guard let executable = CLILocator.locate("claude", path: path) else {
+            return (.missing(searched: path), environment)
+        }
+        let version = version(of: executable, environment: environment) ?? ""
+        return (.found(path: executable.path, version: version), environment)
     }
 
     /// `claude --version` prints e.g. "2.1.296 (Claude Code)"; the first word is the version.

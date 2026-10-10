@@ -1,8 +1,8 @@
 import AinkradAppKit
 import SwiftUI
 
-/// The selected thread: its header, then the conversation, opened at the
-/// newest message.
+/// The selected thread: its header, the conversation (opened at the newest
+/// message), a pending approval, what the agent is doing, and the composer.
 struct ThreadView: View {
     let model: GrimoireModel
     let thread: ClaudeSessionSummary
@@ -10,43 +10,54 @@ struct ThreadView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ThreadHeader(thread: thread)
-            if model.isLoadingThread && model.entries.isEmpty {
+            ThreadHeader(thread: thread, model: model.current?.model)
+            if let live = model.current {
+                ConversationView(live: live, workingDirectory: thread.workingDirectory)
+                ThreadFooter(live: live, model: model, workingDirectory: thread.workingDirectory)
+            } else {
                 AinkradLoadingState(label: "Opening the thread…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                transcript
             }
         }
     }
+}
 
-    private var transcript: some View {
+private struct ConversationView: View {
+    let live: LiveThread
+    let workingDirectory: String
+    @Environment(\.ainkradSkin) private var skin
+
+    var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: skin.size.s14) {
-                    ForEach(Array(model.entries.enumerated()), id: \.offset) { index, entry in
-                        EntryRow(entry: entry, workingDirectory: thread.workingDirectory).id(index)
+                    ForEach(Array(live.entries.enumerated()), id: \.offset) { index, entry in
+                        EntryRow(
+                            entry: entry, workingDirectory: workingDirectory,
+                            waitingToolID: live.pendingApproval?.toolUseID
+                        ).id(index)
                     }
                 }
                 .padding(.horizontal, skin.size.s20)
                 .padding(.top, skin.size.s8)
                 .padding(.bottom, skin.size.s20)
             }
-            .scrollIndicators(.automatic)
             .onAppear { scrollToNewest(proxy) }
-            .onChange(of: model.entries.count) { scrollToNewest(proxy) }
+            .onChange(of: live.entries.count) { scrollToNewest(proxy) }
+            .onChange(of: live.entries.last) { scrollToNewest(proxy) }
         }
     }
 
     private func scrollToNewest(_ proxy: ScrollViewProxy) {
-        guard !model.entries.isEmpty else { return }
-        proxy.scrollTo(model.entries.count - 1, anchor: .bottom)
+        guard !live.entries.isEmpty else { return }
+        proxy.scrollTo(live.entries.count - 1, anchor: .bottom)
     }
 }
 
 private struct EntryRow: View {
     let entry: ThreadEntry
     let workingDirectory: String
+    let waitingToolID: String?
     @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
@@ -60,7 +71,7 @@ private struct EntryRow: View {
         case .thinking(let text):
             ThinkingRow(text: text)
         case .tool(let call):
-            ToolCard(call: call, workingDirectory: workingDirectory)
+            ToolCard(call: call, workingDirectory: workingDirectory, isWaiting: call.id == waitingToolID)
         case .plan(let steps):
             PlanCard(steps: steps)
         }
@@ -123,22 +134,25 @@ private struct ThinkingRow: View {
 private struct ToolCard: View {
     let call: ToolCall
     let workingDirectory: String
+    /// An approval for this call is pending: amber, "waiting for you", open.
+    let isWaiting: Bool
     @State private var isExpanded: Bool
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
     @Environment(\.ainkradTypography) private var typography
 
-    init(call: ToolCall, workingDirectory: String) {
+    init(call: ToolCall, workingDirectory: String, isWaiting: Bool) {
         self.call = call
         self.workingDirectory = workingDirectory
+        self.isWaiting = isWaiting
         _isExpanded = State(initialValue: ["Edit", "MultiEdit", "Write", "Bash"].contains(call.name))
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s8) {
             header
-            if isExpanded, let body = detail {
+            if isExpanded || isWaiting, let body = detail {
                 body
             }
         }
@@ -161,10 +175,17 @@ private struct ToolCard: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: skin.size.s8)
-            Text(ToolSummary.result(name: call.name, input: call.input, output: call.result))
-                .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
-                .foregroundStyle(call.result?.isError == true ? statusColors.danger : skin.color(skin.text.faint))
-                .lineLimit(1)
+            Text(
+                isWaiting
+                    ? "waiting for you" : ToolSummary.result(name: call.name, input: call.input, output: call.result)
+            )
+            .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
+            .foregroundStyle(
+                isWaiting
+                    ? statusColors.warning
+                    : call.result?.isError == true ? statusColors.danger : skin.color(skin.text.faint)
+            )
+            .lineLimit(1)
         }
         .contentShape(Rectangle())
         .onTapGesture { isExpanded.toggle() }
@@ -174,6 +195,8 @@ private struct ToolCard: View {
         switch call.name {
         case "Edit", "MultiEdit":
             return AnyView(DiffBlock(diff: ToolSummary.editDiff(call.input)))
+        case "Bash" where call.result == nil:
+            return AnyView(OutputBlock(text: "$ " + (call.input["command"]?.stringValue ?? ""), maxLines: 8))
         case "Write":
             return AnyView(OutputBlock(text: call.input["content"]?.stringValue ?? "", maxLines: 12))
         default:
@@ -183,13 +206,15 @@ private struct ToolCard: View {
     }
 
     private var dotColor: Color {
+        if isWaiting { return statusColors.warning }
         guard let result = call.result else { return theme.accentSecondary }
         return result.isError ? statusColors.danger : statusColors.success
     }
 
     /// Glass frames controls with a neutral hairline, Neon with its accent rim.
     private var stroke: Color {
-        skin.material.kind == "glass"
+        if isWaiting { return statusColors.warning.opacity(skin.opacity.o60) }
+        return skin.material.kind == "glass"
             ? theme.foreground.opacity(skin.opacity.o12) : theme.accentSecondary.opacity(skin.opacity.o25)
     }
 }

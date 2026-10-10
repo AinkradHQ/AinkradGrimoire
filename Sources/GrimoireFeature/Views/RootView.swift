@@ -47,7 +47,7 @@ struct MainPane: View {
                         title: "No threads yet",
                         message: "Open a project folder to start. Sessions you run in the terminal show up here too.")
                 } else if let thread = model.selectedThread {
-                    ThreadView(model: model, thread: thread)
+                    ThreadView(model: model, thread: thread).id(thread.id)
                 } else {
                     AinkradEmptyState(
                         icon: "text.bubble", title: "Pick a thread",
@@ -62,6 +62,8 @@ struct MainPane: View {
 /// Title and where the thread lives: project · branch · agent · model.
 struct ThreadHeader: View {
     let thread: ClaudeSessionSummary
+    /// The running agent's model, when it differs from the stored one.
+    var model: String?
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
 
@@ -78,7 +80,7 @@ struct ThreadHeader: View {
                     Text(branch).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                 }
                 HarnessBadge.claude
-                if let model = thread.model.map(ModelName.display) {
+                if let model = (model ?? thread.model).map(ModelName.display) {
                     Text(model).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                 }
             }
