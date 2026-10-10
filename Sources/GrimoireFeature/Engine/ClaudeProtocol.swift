@@ -104,6 +104,7 @@ struct ClaudeProtocol {
         case "control_request": return Self.controlRequest(message)
         case "control_response": return controlResponse(message)
         case "result": return [result(message)]
+        case "rate_limit_event": return Self.usage(message).map { [.usage($0)] } ?? []
         default: return []
         }
     }
@@ -135,6 +136,20 @@ struct ClaudeProtocol {
             return SlashCommandInfo(
                 name: name, description: command["description"]?.stringValue ?? "",
                 argumentHint: command["argumentHint"]?.stringValue ?? "")
+        }
+    }
+
+    /// `rate_limit_info.unifiedWindows` → windows, shortest first.
+    static func usage(_ message: JSONValue) -> [UsageWindow]? {
+        guard case .object(let windows) = message["rate_limit_info"]?["unifiedWindows"] else { return nil }
+        let names = ["five_hour": "5-hour", "seven_day": "7-day"]
+        let known = ["five_hour", "seven_day"].filter { windows[$0] != nil }
+        let others = windows.keys.filter { names[$0] == nil }.sorted()
+        return (known + others).compactMap { key in
+            guard let utilization = windows[key]?["utilization"]?.doubleValue else { return nil }
+            return UsageWindow(
+                name: names[key] ?? key.replacingOccurrences(of: "_", with: " "), utilization: utilization,
+                resetsAt: windows[key]?["resetsAt"]?.doubleValue.map { Date(timeIntervalSince1970: $0) })
         }
     }
 

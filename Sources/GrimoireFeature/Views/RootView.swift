@@ -1,4 +1,5 @@
 import AinkradAppKit
+import AppKit
 import SwiftUI
 
 /// The window: sidebar and the selected thread side by side, one surface.
@@ -32,26 +33,49 @@ struct MainPane: View {
 
     var body: some View {
         Group {
+            if model.isShowingSettings {
+                SettingsView(model: model)
+            } else {
+                content
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        Group {
             switch model.cli {
             case .checking:
                 AinkradLoadingState(label: "Looking for Claude Code…")
             case .missing(let searched):
-                AinkradEmptyState(
+                EmptyWithActions(
                     icon: "terminal",
                     title: "No coding agent found",
                     message: """
                         Grimoire drives the CLIs you already use. It looked on your login shell's PATH:
                         \(searched)
                         Install Claude Code with: npm install -g @anthropic-ai/claude-code
-                        """,
-                    actionTitle: "Check again"
-                ) { Task { await model.reload() } }
+                        """
+                ) {
+                    AinkradButton(title: "Choose the CLI…", style: .secondary) { model.isShowingSettings = true }
+                        .fixedSize()
+                    AinkradButton(title: "Check again", style: .primary) { Task { await model.reload() } }
+                        .fixedSize()
+                }
             case .found:
                 if model.projects.isEmpty {
-                    AinkradEmptyState(
+                    EmptyWithActions(
                         icon: "books.vertical",
                         title: "No threads yet",
-                        message: "Open a project folder to start. Sessions you run in the terminal show up here too.")
+                        message:
+                            "Open a project folder and start a thread — or keep using the terminal; sessions you run there show up here too."
+                    ) {
+                        AinkradButton(title: "Open folder…", style: .secondary) {
+                            if let url = FolderPicker.choose() { model.openFolder(url) }
+                        }
+                        .fixedSize()
+                    }
                 } else if model.selectedThread == nil, model.selectedThreadID == nil {
                     AinkradEmptyState(
                         icon: "text.bubble", title: "Pick a thread",
@@ -66,6 +90,34 @@ struct MainPane: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// An empty state with more than one way out.
+struct EmptyWithActions<Actions: View>: View {
+    let icon: String
+    let title: String
+    let message: String
+    @ViewBuilder var actions: Actions
+    @Environment(\.ainkradSkin) private var skin
+
+    var body: some View {
+        VStack(spacing: skin.size.s14) {
+            AinkradEmptyState(icon: icon, title: title, message: message).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: skin.size.s8) { actions }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Asks for a project folder.
+enum FolderPicker {
+    @MainActor static func choose() -> URL? {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.prompt = "Open"
+        return panel.runModal() == .OK ? panel.url : nil
     }
 }
 
