@@ -70,14 +70,27 @@ struct MainPane: View {
 }
 
 /// Title and where the thread lives: project · branch · agent · model.
-struct ThreadHeader: View {
+struct ThreadHeader<Actions: View>: View {
     let thread: ClaudeSessionSummary
     /// The running agent's model, when it differs from the stored one.
     var model: String?
+    @ViewBuilder var actions: Actions
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
 
     var body: some View {
+        HStack(alignment: .top, spacing: skin.size.s10) {
+            details
+            Spacer(minLength: skin.size.s8)
+            HStack(spacing: skin.size.s6) { actions }
+        }
+        .padding(.horizontal, skin.size.s20)
+        .padding(.top, skin.size.s14)
+        .padding(.bottom, skin.size.s10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var details: some View {
         VStack(alignment: .leading, spacing: skin.size.s4) {
             Text(thread.title)
                 .font(skin.font(AinkradFontToken(sizeKey: "t15", weight: "semibold")))
@@ -89,7 +102,7 @@ struct ThreadHeader: View {
                     Text("·")
                     Text(branch).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                 }
-                HarnessBadge.claude
+                HarnessBadge.claude.fixedSize()
                 if let model = (model ?? thread.model).map(ModelName.display) {
                     Text(model).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                 }
@@ -98,10 +111,6 @@ struct ThreadHeader: View {
             .foregroundStyle(skin.color(skin.text.muted))
             .lineLimit(1)
         }
-        .padding(.horizontal, skin.size.s20)
-        .padding(.top, skin.size.s14)
-        .padding(.bottom, skin.size.s10)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

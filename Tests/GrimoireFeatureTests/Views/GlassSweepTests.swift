@@ -48,6 +48,21 @@ struct GlassSweepTests {
                     id: "r9", toolUseID: "t9", toolName: "Bash", input: push, summary: "git push",
                     suggestions: [["type": "addRules", "rules": [["toolName": "Bash", "ruleContent": "git push:*"]]]])))
 
+        // Screen 5: the thread with the review pane open on this thread's edits.
+        let reviewing = GrimoireModel(settings: settings, sessionsRoot: root)
+        await reviewing.reload()
+        reviewing.selectedThreadID = "glass"
+        while reviewing.current == nil, Date() < deadline { try await Task.sleep(for: .milliseconds(50)) }
+        reviewing.isReviewOpen = true
+        if let thread = reviewing.selectedThread, let review = reviewing.review(for: thread) {
+            review.scope = .thread
+            await review.load()
+            review.addComment(
+                "Use the kit's row background instead of a raw Capsule.",
+                on: "Sources/Ainkrad/Features/Sidebar/SidebarRow.swift")
+            review.commitMessage = "fix(sidebar): glass capsule selection"
+        }
+
         // Screen 7: the New thread sheet over the window.
         let composing = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
         await composing.reload()
@@ -67,6 +82,7 @@ struct GlassSweepTests {
             let screens: [(String, AnyView)] = [
                 ("e42-thread", AnyView(RootView(model: model, theme: hostTheme))),
                 ("e43-approval", AnyView(RootView(model: waiting, theme: hostTheme))),
+                ("e45-review", AnyView(RootView(model: reviewing, theme: hostTheme))),
                 ("e47-new-thread", AnyView(RootView(model: composing, theme: hostTheme))),
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
             ]
