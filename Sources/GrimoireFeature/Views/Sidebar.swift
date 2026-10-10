@@ -16,9 +16,8 @@ struct Sidebar: View {
                 .padding(.horizontal, skin.size.s6)
 
             HStack(spacing: AinkradSpacing.sm) {
-                AinkradButton(title: "New thread", style: .primary, icon: "plus") {}
-                    .disabled(true)
-                    .help("Coming soon")
+                AinkradButton(title: "New thread", style: .primary, icon: "plus") { model.isComposingNewThread = true }
+                    .disabled(model.projects.isEmpty)
                     .fixedSize()
                 AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
                     .fixedSize()

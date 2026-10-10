@@ -14,6 +14,12 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.tokens.background)
         .foregroundStyle(theme.tokens.foreground)
+        .ainkradModal(
+            isPresented: Binding(get: { model.isComposingNewThread }, set: { model.isComposingNewThread = $0 }),
+            contentWidth: NewThreadSheet.width
+        ) {
+            NewThreadSheet(model: model) { model.isComposingNewThread = false }
+        }
         .ainkradHostTheme(theme)
         .task { model.start() }
     }
@@ -46,12 +52,16 @@ struct MainPane: View {
                         icon: "books.vertical",
                         title: "No threads yet",
                         message: "Open a project folder to start. Sessions you run in the terminal show up here too.")
+                } else if model.selectedThread == nil, model.selectedThreadID == nil {
+                    AinkradEmptyState(
+                        icon: "text.bubble", title: "Pick a thread",
+                        message: "Choose a thread in the sidebar, or start a new one.",
+                        actionTitle: "New thread"
+                    ) { model.isComposingNewThread = true }
                 } else if let thread = model.selectedThread {
                     ThreadView(model: model, thread: thread).id(thread.id)
                 } else {
-                    AinkradEmptyState(
-                        icon: "text.bubble", title: "Pick a thread",
-                        message: "Choose a thread in the sidebar to see the conversation.")
+                    AinkradLoadingState(label: "Opening the thread…")
                 }
             }
         }

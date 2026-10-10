@@ -20,7 +20,15 @@ final class GrimoireModel {
     static let recentLimit = 10
 
     private(set) var cli: CLIStatus = .checking
-    private(set) var projects: [ClaudeProject] = []
+    /// Projects and threads as listed from the CLI's session files.
+    private var listed: [ClaudeProject] = []
+    /// Threads started here whose session the CLI hasn't written yet.
+    private(set) var draftThreads: [ClaudeSessionSummary] = []
+    /// What the sidebar lists: the CLI's sessions, new threads on top of
+    /// their project, then opened folders with no sessions yet.
+    var projects: [ClaudeProject] {
+        Self.merge(Self.adding(draftThreads, to: listed), openedFolders: settings.openedFolders)
+    }
     private(set) var isLoading = false
     var selectedThreadID: String? {
         didSet { if selectedThreadID != oldValue { loadSelectedThread() } }
@@ -35,6 +43,7 @@ final class GrimoireModel {
     private var environment: [String: String] = [:]
     var searchText = ""
     var showsAllProjects = false
+    var isComposingNewThread = false
 
     let settings: SettingsStore
     private let sessionsRoot: URL
@@ -66,12 +75,68 @@ final class GrimoireModel {
         }.value
         cli = detected.status
         environment = detected.environment
-        projects = Self.merge(listed, openedFolders: settings.openedFolders)
+        self.listed = listed
+        // A draft is done once its session shows up in the listing.
+        let known = Set(listed.flatMap(\.sessions).map(\.id))
+        draftThreads.removeAll { known.contains($0.id) }
     }
 
     func openFolder(_ url: URL) {
         settings.addFolder(url.path)
-        projects = Self.merge(projects, openedFolders: settings.openedFolders)
+    }
+
+    /// Starts a new thread in `project` and opens it. It shows at once as a
+    /// draft; when the CLI names the session the draft takes that id.
+    func startThread(project: String, prompt: String, model: String?, mode: PermissionMode, worktree: Bool) {
+        let placeholder = "new-\(UUID().uuidString)"
+        let worktreeName = worktree ? Self.worktreeName(for: prompt) : nil
+        let draft = ClaudeSessionSummary(
+            id: placeholder, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: project,
+            projectPath: project, worktree: worktreeName, title: String(prompt.prefix(80)), model: model,
+            lastActivity: Date())
+        let live = LiveThread(
+            entries: [],
+            startOptions: EngineStartOptions(
+                workingDirectory: URL(fileURLWithPath: project), model: model, permissionMode: mode,
+                worktree: worktreeName),
+            model: model, makeEngine: { [weak self] in self?.makeEngine() ?? UnavailableEngine() })
+        live.onSessionID = { [weak self] id in self?.adopt(placeholder, as: id) }
+        draftThreads.insert(draft, at: 0)
+        liveThreads[placeholder] = live
+        selectedThreadID = placeholder
+        live.send(prompt)
+    }
+
+    /// Re-keys a new thread under the session id the CLI gave it.
+    private func adopt(_ placeholder: String, as id: String) {
+        guard let live = liveThreads.removeValue(forKey: placeholder) else { return }
+        liveThreads[id] = live
+        if let index = draftThreads.firstIndex(where: { $0.id == placeholder }) { draftThreads[index].id = id }
+        if selectedThreadID == placeholder { selectedThreadID = id }
+        Task { await reload() }
+    }
+
+    /// `fix the login bug` → `fix-the-login-bug-3f2a`: a branch-safe worktree name.
+    static func worktreeName(for prompt: String, suffix: String = String(UUID().uuidString.prefix(4)).lowercased())
+        -> String
+    {
+        let words = prompt.lowercased().split { !$0.isLetter && !$0.isNumber }.prefix(5)
+        let slug = words.joined(separator: "-")
+        return (slug.isEmpty ? "thread" : String(slug.prefix(40))) + "-" + suffix
+    }
+
+    static func adding(_ drafts: [ClaudeSessionSummary], to projects: [ClaudeProject]) -> [ClaudeProject] {
+        guard !drafts.isEmpty else { return projects }
+        var projects = projects
+        for draft in drafts.reversed() {
+            if let index = projects.firstIndex(where: { $0.path == draft.projectPath }) {
+                projects[index].sessions.removeAll { $0.id == draft.id }
+                projects[index].sessions.insert(draft, at: 0)
+            } else {
+                projects.insert(ClaudeProject(path: draft.projectPath, sessions: [draft]), at: 0)
+            }
+        }
+        return projects
     }
 
     /// Opens the selected thread: the live one if it was opened before, else
@@ -120,7 +185,11 @@ final class GrimoireModel {
         return []
     }
 
+    /// Tests hand in a fake; the app always uses the CLI it found.
+    var engineOverride: (() -> HarnessEngine)?
+
     private func makeEngine() -> HarnessEngine {
+        if let engineOverride { return engineOverride() }
         guard case .found(let path, _) = cli else { return UnavailableEngine() }
         return ClaudeEngine(executable: URL(fileURLWithPath: path), environment: environment)
     }
