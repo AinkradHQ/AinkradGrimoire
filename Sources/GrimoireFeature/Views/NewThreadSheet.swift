@@ -11,6 +11,7 @@ struct NewThreadSheet: View {
     @State private var agentModel: String
     @State private var mode: PermissionMode
     @State private var worktree: Bool
+    @State private var harness: Harness
     @State private var prompt = ""
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
@@ -21,6 +22,7 @@ struct NewThreadSheet: View {
         let project = model.selectedThread?.projectPath ?? model.mostRecentProject ?? ""
         _project = State(initialValue: project)
         _agentModel = State(initialValue: model.settings.defaultModel)
+        _harness = State(initialValue: Self.installed(model).first ?? .claude)
         _mode = State(initialValue: model.settings.defaultMode)
         _worktree = State(
             initialValue: model.settings.worktreeByDefault
@@ -40,8 +42,9 @@ struct NewThreadSheet: View {
 
             row("Agent") {
                 HStack(spacing: skin.size.s8) {
-                    AinkradBadge(text: "Claude Code", tint: theme.accentPrimary)
-                    Text("Codex, OpenCode and agy are coming")
+                    AinkradSegmentedPicker(items: Self.installed(model), selection: $harness) { $0.displayName }
+                        .fixedSize()
+                    Text("OpenCode and agy are coming")
                         .font(skin.font(AinkradFontToken(sizeKey: "t11")))
                         .foregroundStyle(skin.color(skin.text.faint))
                 }
@@ -49,15 +52,21 @@ struct NewThreadSheet: View {
             row("Project") { projectMenu }
             row("Worktree") {
                 HStack(spacing: skin.size.s10) {
-                    AinkradToggle(isOn: $worktree).disabled(!isGitRepository)
-                    Text(isGitRepository ? "Work in a separate git worktree" : "Not a git repository")
+                    AinkradToggle(isOn: $worktree).disabled(!canUseWorktree)
+                    Text(worktreeNote)
                         .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                         .foregroundStyle(skin.color(skin.text.muted))
                 }
             }
             row("Model") {
-                AinkradSegmentedPicker(items: ["opus", "sonnet", "haiku"], selection: $agentModel) { $0.capitalized }
-                    .fixedSize()
+                if harness == .claude {
+                    AinkradSegmentedPicker(items: ["opus", "sonnet", "haiku"], selection: $agentModel) { $0.capitalized }
+                        .fixedSize()
+                } else {
+                    Text("Codex's default, from its config")
+                        .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+                        .foregroundStyle(skin.color(skin.text.muted))
+                }
             }
             row("Mode") {
                 AinkradSegmentedPicker(items: PermissionMode.allCases, selection: $mode) { $0.title }
@@ -76,7 +85,8 @@ struct NewThreadSheet: View {
                     .disabled(!canStart)
             }
         }
-        .onChange(of: project) { if !isGitRepository { worktree = false } }
+        .onChange(of: project) { if !canUseWorktree { worktree = false } }
+        .onChange(of: harness) { if !canUseWorktree { worktree = false } }
     }
 
     private func row(_ label: String, @ViewBuilder content: () -> some View) -> some View {
@@ -112,6 +122,22 @@ struct NewThreadSheet: View {
         FileManager.default.fileExists(atPath: (project as NSString).appendingPathComponent(".git"))
     }
 
+    /// The agents whose CLI was found; Claude when none is, so the sheet still lays out.
+    static func installed(_ model: GrimoireModel) -> [Harness] {
+        let found = Harness.allCases.filter {
+            if case .found = model.status(of: $0) { true } else { false }
+        }
+        return found.isEmpty ? [.claude] : found
+    }
+
+    /// Worktrees are Claude Code's `--worktree`; Codex has none.
+    private var canUseWorktree: Bool { isGitRepository && harness == .claude }
+
+    private var worktreeNote: String {
+        if harness != .claude { return "Codex works in the folder itself" }
+        return isGitRepository ? "Work in a separate git worktree" : "Not a git repository"
+    }
+
     private var canStart: Bool {
         !project.isEmpty && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
@@ -119,8 +145,8 @@ struct NewThreadSheet: View {
     private func start() {
         guard canStart else { return }
         model.startThread(
-            project: project, prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines), model: agentModel,
-            mode: mode, worktree: worktree)
+            project: project, prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
+            model: harness == .claude ? agentModel : nil, mode: mode, worktree: worktree, harness: harness)
         dismiss()
     }
 }

@@ -30,10 +30,10 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: skin.size.s16) {
                     group("Agents") {
-                        agentRow(badge: "Claude", tint: HarnessBadge.claudeTint, detail: claudeDetail) {
+                        agentRow(badge: "Claude", tint: HarnessBadge.claudeTint, detail: detail(model.cli)) {
                             AinkradButton(title: "Change…", style: .secondary) { chooseCLI() }.fixedSize()
                         }
-                        agentRow(badge: "Codex", tint: theme.foreground, detail: "Coming in a later version") {
+                        agentRow(badge: "Codex", tint: theme.foreground, detail: detail(model.codexCLI)) {
                             EmptyView()
                         }
                         agentRow(badge: "OpenCode", tint: theme.accentTertiary, detail: "Coming in a later version") {
@@ -71,7 +71,7 @@ struct SettingsView: View {
                     }
                     group("Usage") {
                         if model.usage.isEmpty {
-                            Text("Shown once a thread has talked to Claude in this session.")
+                            Text("Shown once a thread has talked to an agent in this session.")
                                 .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                                 .foregroundStyle(skin.color(skin.text.muted))
                         }
@@ -106,8 +106,8 @@ struct SettingsView: View {
         }
     }
 
-    private var claudeDetail: String {
-        switch model.cli {
+    private func detail(_ status: CLIStatus) -> String {
+        switch status {
         case .found(let path, let version): "\((path as NSString).abbreviatingWithTildeInPath) · \(version)"
         case .missing: "Not found on your PATH"
         case .checking: "Looking…"

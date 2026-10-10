@@ -91,6 +91,11 @@ enum ToolSummary {
             let pattern = input["pattern"]?.stringValue.map { "\"\($0)\"" } ?? ""
             return [pattern, path("path").map { "in \($0)" }].compactMap { $0 }.joined(separator: " ")
         case "Glob": return input["pattern"]?.stringValue ?? ""
+        case "Patch":
+            let paths = (input["changes"]?.arrayValue ?? []).compactMap { $0["path"]?.stringValue }
+            guard let first = paths.first else { return "" }
+            let more = paths.count > 1 ? " +\(paths.count - 1) more" : ""
+            return relative(first, to: workingDirectory) + more
         case "WebFetch": return input["url"]?.stringValue ?? ""
         case "WebSearch": return input["query"]?.stringValue ?? ""
         case "Task", "Agent": return input["description"]?.stringValue ?? ""
@@ -113,6 +118,9 @@ enum ToolSummary {
             let added = lines.filter { $0.kind == .insertion }.count
             let removed = lines.filter { $0.kind == .deletion }.count
             return "+\(added) −\(removed)"
+        case "Patch":
+            let lines = ReviewChanges.patchChanges(input).compactMap(\.diff).flatMap(\.hunks).flatMap(\.lines)
+            return "+\(lines.filter { $0.kind == .insertion }.count) −\(lines.filter { $0.kind == .deletion }.count)"
         case "Write":
             return "\(lineCount(input["content"]?.stringValue ?? "")) lines"
         case "Grep":

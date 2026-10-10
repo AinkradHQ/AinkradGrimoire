@@ -80,13 +80,17 @@ struct Sidebar: View {
             let waiting = statuses.filter { $0 == .needsYou }.count
             if working > 0 { Text("\(working) working") }
             if waiting > 0 { Text("\(waiting) needs you") }
-            switch model.cli {
-            case .found(_, let version):
+            switch (model.cli, model.codexCLI) {
+            case (.checking, _):
+                Text("Looking for agents…")
+            case (.found(_, let claude), .found(_, let codex)):
+                Text("claude \(claude) · codex \(codex)")
+            case (.found(_, let version), _):
                 Text("claude \(version)")
-            case .missing:
-                Text("Claude Code not found")
-            case .checking:
-                Text("Looking for Claude Code…")
+            case (_, .found(_, let version)):
+                Text("codex \(version)")
+            default:
+                Text("No coding agent found")
             }
             Spacer(minLength: 0)
             if model.isLoading {
@@ -202,7 +206,7 @@ private struct ThreadRow: View {
             // On a selected row (a solid accent fill under Glass) badges take the
             // foreground colour so they stay readable.
             HStack(spacing: skin.size.s6) {
-                AinkradBadge(text: "Claude", tint: isSelected ? theme.foreground : HarnessBadge.claudeTint)
+                HarnessBadge(harness: thread.harness, onSelection: isSelected)
                 if let worktree = thread.worktree {
                     AinkradBadge(text: "⑂ \(worktree)", tint: isSelected ? theme.foreground : theme.accentSecondary)
                 }
@@ -247,12 +251,21 @@ private struct ShowAllRow: View {
     }
 }
 
-/// Which agent a thread runs on. Only Claude Code until the other adapters land.
-enum HarnessBadge {
+/// Which agent a thread runs on: Claude in its brand clay, Codex in the foreground colour.
+struct HarnessBadge: View {
     // design-lint: allow raw-color kit-gap colors.providerBrand (Claude's brand clay, as Sage's model picker)
     static let claudeTint = Color(.sRGB, red: 0xCC / 255, green: 0x78 / 255, blue: 0x5C / 255)
 
-    static var claude: some View { AinkradBadge(text: "Claude", tint: claudeTint) }
+    let harness: Harness
+    /// On a selected row's accent fill every badge takes the foreground colour.
+    var onSelection = false
+    @Environment(\.ainkradTheme) private var theme
+
+    var body: some View {
+        AinkradBadge(
+            text: harness.displayName,
+            tint: onSelection || harness == .codex ? theme.foreground : Self.claudeTint)
+    }
 }
 
 /// Compact relative times for thread rows: now, 5m, 3h, yesterday, Oct 2.

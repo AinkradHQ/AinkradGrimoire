@@ -63,13 +63,25 @@ struct GlassSweepTests {
             review.commitMessage = "fix(sidebar): glass capsule selection"
         }
 
+        // E6: a Codex thread beside Claude's — its badge, a command, a patch and its plan.
+        let codexing = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        codexing.listCodex = SampleSessions.codex
+        await codexing.reload()
+        codexing.engineOverride = { FakeEngine() }
+        codexing.startThread(
+            project: "/Users/me/Projects/Ainkrad", prompt: "Tighten the README intro", model: nil, mode: .acceptEdits,
+            worktree: false, harness: .codex)
+        for event in SampleSessions.codexTurn { codexing.current?.apply(event) }
+
         // Screen 7: the New thread sheet over the window.
         let composing = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        composing.listCodex = SampleSessions.codex
         await composing.reload()
         composing.isComposingNewThread = true
 
         // Screen 8: Settings, with usage a thread reported.
         let configuring = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        configuring.listCodex = SampleSessions.codex
         await configuring.reload()
         configuring.engineOverride = { FakeEngine() }
         configuring.startThread(
@@ -110,6 +122,7 @@ struct GlassSweepTests {
                 ("e49-no-threads", AnyView(RootView(model: noThreads, theme: hostTheme))),
                 ("e47-new-thread", AnyView(RootView(model: composing, theme: hostTheme))),
                 ("e41-no-selection", AnyView(RootView(model: empty, theme: hostTheme))),
+                ("e6-codex-thread", AnyView(RootView(model: codexing, theme: hostTheme))),
             ]
             for (name, view) in screens {
                 try LiveGlassCapture.shoot(
@@ -158,6 +171,45 @@ struct GlassSweepTests {
 
 /// A `~/.claude/projects`-shaped folder with made-up sessions.
 enum SampleSessions {
+    /// A found `codex` with one stored thread.
+    static let codex: @Sendable ([String: String]) -> (CLIStatus, [ClaudeSessionSummary]) = { _ in
+        (
+            .found(path: "/opt/homebrew/bin/codex", version: "0.154.0"),
+            [
+                ClaudeSessionSummary(
+                    id: "codex-1", harness: .codex, fileURL: URL(fileURLWithPath: "/dev/null"),
+                    workingDirectory: "/Users/me/Projects/Ainkrad", projectPath: "/Users/me/Projects/Ainkrad",
+                    title: "Review the plugin catalog", gitBranch: "development", model: "gpt-5.6-luna",
+                    lastActivity: Date(timeIntervalSinceNow: -2 * 60))
+            ]
+        )
+    }
+
+    /// One Codex turn as its engine reports it.
+    static let codexTurn: [EngineEvent] = {
+        let changes: JSONValue = [
+            "changes": [
+                [
+                    "path": "/Users/me/Projects/Ainkrad/README.md", "kind": ["type": "update"],
+                    "diff":
+                        "@@ -1,4 +1,4 @@\n # Ainkrad\n \n-A workspace for agents.\n+An Agentic OS for macOS: one desktop for every coding agent.\n \n",
+                ]
+            ]
+        ]
+        return [
+            .block(messageID: "p", .toolUse(id: "plan-u1", name: "TodoWrite", input: ["todos": [
+                ["content": "Read the README", "status": "completed"],
+                ["content": "Rewrite the intro", "status": "completed"],
+                ["content": "Check the links", "status": "in_progress"],
+            ]])),
+            .block(messageID: "c1", .toolUse(id: "c1", name: "Bash", input: ["command": "sed -n 1,20p README.md"])),
+            .toolResult(toolUseID: "c1", content: "# Ainkrad\n\nA workspace for agents.\n", isError: false),
+            .block(messageID: "f1", .toolUse(id: "f1", name: "Patch", input: changes)),
+            .toolResult(toolUseID: "f1", content: "", isError: false),
+            .block(messageID: "m1", .text("The intro now says what Ainkrad is in one line. Checking the links next.")),
+        ]
+    }()
+
     static func write() throws -> URL {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-sweep-\(UUID())")
         let threads: [(project: String, id: String, title: String, branch: String, age: TimeInterval)] = [
