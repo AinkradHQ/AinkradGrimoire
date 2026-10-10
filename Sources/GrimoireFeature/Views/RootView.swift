@@ -47,10 +47,7 @@ struct MainPane: View {
                         title: "No threads yet",
                         message: "Open a project folder to start. Sessions you run in the terminal show up here too.")
                 } else if let thread = model.selectedThread {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ThreadHeader(thread: thread)
-                        Spacer(minLength: 0)
-                    }
+                    ThreadView(model: model, thread: thread)
                 } else {
                     AinkradEmptyState(
                         icon: "text.bubble", title: "Pick a thread",

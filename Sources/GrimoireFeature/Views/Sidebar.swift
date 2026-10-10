@@ -19,8 +19,9 @@ struct Sidebar: View {
                 AinkradButton(title: "New thread", style: .primary, icon: "plus") {}
                     .disabled(true)
                     .help("Coming soon")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                AinkradIconButton(systemName: "folder.badge.plus", tooltip: "Open folder…") { chooseFolder() }
+                    .fixedSize()
+                AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
+                    .fixedSize()
             }
 
             AinkradSearchField(text: $model.searchText, placeholder: "Search threads")
@@ -42,7 +43,7 @@ struct Sidebar: View {
         .padding(.top, skin.size.s12)
         .padding(.horizontal, skin.size.s10)
         .padding(.bottom, skin.size.s10)
-        .frame(width: skin.size.s280)
+        .frame(width: skin.size.s300)
         .frame(maxHeight: .infinity, alignment: .top)
         // Fill, not a rule.
         .background(theme.surface.opacity(skin.opacity.o35))

@@ -19,8 +19,9 @@ packages:
     # that copy does not define and dies at `Bundle.load()`. This matches the
     # host's pin exactly: the settings-catalog merge, which is what
     # `settingsCatalog(host:)` in Sources/GrimoireFeature/PluginApp.swift needs.
-    # aa3fc95: Glass Native kit (#96–#107), same as AinkradPluginTemplate.
-    revision: aa3fc955d523a9ec940626bddeeabd927c587737
+    # bdf3b0d: Grimoire E1 — AinkradMarkdownText, AinkradDiffReview, AinkradDecisionBar, AinkradComposer (#108–#110).
+    # AHEAD of the released host (0.30.0 embeds aa3fc95): loads only in a Debug host until the next host release.
+    revision: bdf3b0d8d235cf792ca4c2a986801162aee3e4fb
 targets:
   GrimoireFeature:
     type: library.static

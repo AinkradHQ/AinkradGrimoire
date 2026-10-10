@@ -22,7 +22,12 @@ final class GrimoireModel {
     private(set) var cli: CLIStatus = .checking
     private(set) var projects: [ClaudeProject] = []
     private(set) var isLoading = false
-    var selectedThreadID: String?
+    var selectedThreadID: String? {
+        didSet { if selectedThreadID != oldValue { loadSelectedThread() } }
+    }
+    /// The selected thread, ready to draw. Empty while it loads.
+    private(set) var entries: [ThreadEntry] = []
+    private(set) var isLoadingThread = false
     var searchText = ""
     var showsAllProjects = false
 
@@ -61,6 +66,23 @@ final class GrimoireModel {
     func openFolder(_ url: URL) {
         settings.addFolder(url.path)
         projects = Self.merge(projects, openedFolders: settings.openedFolders)
+    }
+
+    /// Reads the selected thread's session file off the main thread. A slower
+    /// load for an earlier selection never overwrites a newer one.
+    private func loadSelectedThread() {
+        entries = []
+        guard let thread = selectedThread else { return }
+        let id = thread.id
+        isLoadingThread = true
+        Task {
+            let loaded = await Task.detached(priority: .userInitiated) {
+                ThreadEntries.build((try? ClaudeSessions.history(of: thread.fileURL)) ?? [])
+            }.value
+            guard selectedThreadID == id else { return }
+            entries = loaded
+            isLoadingThread = false
+        }
     }
 
     // MARK: - What the sidebar shows
