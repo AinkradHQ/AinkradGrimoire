@@ -90,6 +90,6 @@ struct SettingsAndSignalsTests {
         model.engineOverride = { FakeEngine() }
         model.startThread(project: "/w", prompt: "go", model: nil, mode: .ask, worktree: false)
         model.current?.apply(.usage([UsageWindow(name: "5-hour", utilization: 0.5, resetsAt: nil)]))
-        #expect(model.usage.first?.utilization == 0.5)
+        #expect(model.usage[.claude]?.first?.utilization == 0.5)
     }
 }

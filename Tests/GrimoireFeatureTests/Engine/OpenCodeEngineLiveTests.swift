@@ -18,6 +18,8 @@ struct OpenCodeEngineLiveTests {
         defer { server.stop() }
         let listed = await OpenCodeSessions.summaries(server: server, limit: 5)
         #expect(listed.allSatisfy { $0.harness == .opencode })
+        let models = await OpenCodeSessions.models(server: server, recent: listed)
+        #expect(models.contains { $0.id.contains("/") }, "provider defaults come back as provider/model")
 
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("grimoire-oc-\(UUID())")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

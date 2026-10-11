@@ -219,4 +219,14 @@ struct CodexProtocolTests {
         #expect(review.map(\.path) == ["A.md", "B.md", "C.md"])
         #expect(review.map(\.status) == [.modified, .added, .deleted])
     }
+
+    @Test("model/list entries become choices; hidden ones stay out")
+    func models() throws {
+        let visible = try JSONValue.parse(#"{"id":"gpt-5.6-terra","model":"gpt-5.6-terra","displayName":"GPT-5.6-Terra","hidden":false}"#)
+        #expect(CodexSessions.model(visible) == ModelChoice(id: "gpt-5.6-terra", name: "GPT-5.6-Terra"))
+        #expect(CodexSessions.model(try JSONValue.parse(#"{"id":"x","model":"x","hidden":true}"#)) == nil)
+        // account/rateLimits/read on a free plan: one 30-day window.
+        let limits = try JSONValue.parse(#"{"primary":{"usedPercent":100,"windowDurationMins":43200,"resetsAt":1792073728},"secondary":null}"#)
+        #expect(CodexProtocol.usage(limits) == [UsageWindow(name: "30-day", utilization: 1, resetsAt: Date(timeIntervalSince1970: 1_792_073_728))])
+    }
 }

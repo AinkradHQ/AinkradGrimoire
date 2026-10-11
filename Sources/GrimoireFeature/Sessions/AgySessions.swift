@@ -37,6 +37,29 @@ enum AgySessions {
         return summaries
     }
 
+    /// `agy models` prints `id<TAB>Display name` per line.
+    static func models(executable: URL, environment: [String: String]) -> [ModelChoice] {
+        let process = Process()
+        let pipe = Pipe()
+        process.executableURL = executable
+        process.arguments = ["models"]
+        process.environment = environment.isEmpty ? nil : environment
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return [] }
+        let output = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        return parseModels(String(decoding: output, as: UTF8.self))
+    }
+
+    static func parseModels(_ text: String) -> [ModelChoice] {
+        text.split(separator: "\n").compactMap { line in
+            let fields = line.split(separator: "\t", maxSplits: 1)
+            guard fields.count == 2 else { return nil }
+            return ModelChoice(id: String(fields[0]), name: String(fields[1]))
+        }
+    }
+
     /// One row: `workspace_uris` is a JSON array of `file://` URIs, the first
     /// being where the conversation ran; times read `2026-10-10 18:41:04.859319+00:00`.
     static func summary(id: String, title: String, modified: String, workspaces: String) -> ClaudeSessionSummary? {

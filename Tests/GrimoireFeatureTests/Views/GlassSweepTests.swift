@@ -195,15 +195,19 @@ struct GlassSweepTests {
 enum SampleSessions {
     /// A found `codex` with one stored thread.
     static let codex: GrimoireModel.Lister = { _ in
-        (
-            .found(path: "/opt/homebrew/bin/codex", version: "0.154.0"),
-            [
+        AgentListing(
+            status: .found(path: "/opt/homebrew/bin/codex", version: "0.154.0"),
+            threads: [
                 ClaudeSessionSummary(
                     id: "codex-1", harness: .codex, fileURL: URL(fileURLWithPath: "/dev/null"),
                     workingDirectory: "/Users/me/Projects/Ainkrad", projectPath: "/Users/me/Projects/Ainkrad",
                     title: "Review the plugin catalog", gitBranch: "development", model: "gpt-5.6-luna",
                     lastActivity: Date(timeIntervalSinceNow: -2 * 60))
-            ]
+            ],
+            models: [
+                ModelChoice(id: "gpt-5.6-luna", name: "GPT-5.6-Luna"), ModelChoice(id: "gpt-5.6-terra", name: "GPT-5.6-Terra"),
+            ],
+            usage: [UsageWindow(name: "30-day", utilization: 0.64, resetsAt: Date(timeIntervalSince1970: 1_792_073_728))]
         )
     }
 
@@ -211,13 +215,17 @@ enum SampleSessions {
 
     /// A found `agy` with one stored conversation.
     static let agy: GrimoireModel.Lister = { _ in
-        (
-            .found(path: "/Users/me/.local/bin/agy", version: "1.3.2"),
-            [
+        AgentListing(
+            status: .found(path: "/Users/me/.local/bin/agy", version: "1.3.2"),
+            threads: [
                 ClaudeSessionSummary(
                     id: "agy-1", harness: .agy, fileURL: URL(fileURLWithPath: "/dev/null"),
                     workingDirectory: "/Users/me/Projects/Ainkrad", projectPath: "/Users/me/Projects/Ainkrad",
                     title: "Homebrew cask audit", lastActivity: Date(timeIntervalSinceNow: -90))
+            ],
+            models: [
+                ModelChoice(id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)"),
+                ModelChoice(id: "claude-sonnet-5-5-medium", name: "Claude Sonnet 5.5 (Medium)"),
             ]
         )
     }
@@ -234,14 +242,18 @@ enum SampleSessions {
 
     /// A found `opencode` with one stored session.
     static let openCode: GrimoireModel.Lister = { _ in
-        (
-            .found(path: "/opt/homebrew/bin/opencode", version: "1.18.34"),
-            [
+        AgentListing(
+            status: .found(path: "/opt/homebrew/bin/opencode", version: "1.18.34"),
+            threads: [
                 ClaudeSessionSummary(
                     id: "ses_1", harness: .opencode, fileURL: URL(fileURLWithPath: "/dev/null"),
                     workingDirectory: "/Users/me/Projects/GitScope", projectPath: "/Users/me/Projects/GitScope",
                     title: "Draft the ADR for graph paging", model: "google/gemini-2.5-flash",
                     lastActivity: Date(timeIntervalSinceNow: -40 * 60))
+            ],
+            models: [
+                ModelChoice(id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash"),
+                ModelChoice(id: "openai/gpt-5.6-terra-pro", name: "GPT-5.6 Terra Pro"),
             ]
         )
     }

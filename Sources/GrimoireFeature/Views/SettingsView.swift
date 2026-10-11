@@ -73,12 +73,12 @@ struct SettingsView: View {
                     }
                     group("Usage") {
                         if model.usage.isEmpty {
-                            Text("Shown once a thread has talked to an agent in this session.")
+                            Text("Shown once an agent reports its limits — Claude after a turn, Codex when listed.")
                                 .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                                 .foregroundStyle(skin.color(skin.text.muted))
                         }
-                        ForEach(model.usage, id: \.name) { window in
-                            row("\(window.name) window") {
+                        ForEach(usageRows, id: \.id) { harness, window, _ in
+                            row("\(harness.displayName) · \(window.name) window") {
                                 HStack(spacing: skin.size.s10) {
                                     AinkradStatusBar(value: window.utilization)
                                         .frame(width: skin.size.s240)
@@ -116,10 +116,21 @@ struct SettingsView: View {
         }
     }
 
+    /// Every agent's windows, in agent order.
+    private var usageRows: [(harness: Harness, window: UsageWindow, id: String)] {
+        Harness.allCases.flatMap { harness in
+            (model.usage[harness] ?? []).map { (harness, $0, "\(harness.rawValue)-\($0.name)") }
+        }
+    }
+
     private func usageDetail(_ window: UsageWindow) -> String {
         let percent = "\(Int((window.utilization * 100).rounded()))%"
         guard let resets = window.resetsAt else { return percent }
-        return "\(percent) · resets \(resets.formatted(date: .omitted, time: .shortened))"
+        let when =
+            Calendar.current.isDateInToday(resets)
+            ? resets.formatted(date: .omitted, time: .shortened)
+            : resets.formatted(.dateTime.month(.abbreviated).day().hour().minute())
+        return "\(percent) · resets \(when)"
     }
 
     private func group(_ title: String, @ViewBuilder content: () -> some View) -> some View {

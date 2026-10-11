@@ -69,4 +69,29 @@ struct NewThreadTests {
         #expect(merged.map(\.path) == ["/b", "/a"])
         #expect(merged.last?.sessions.map(\.id) == ["n1", "old"])
     }
+
+    @Test("listing keeps each agent's models and usage apart; a thread's usage lands on its agent")
+    func perAgentModelsAndUsage() async throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-usage-\(UUID())")
+        let model = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        model.listers = [
+            .codex: { _ in
+                AgentListing(
+                    status: .found(path: "/bin/codex", version: "1"), models: [ModelChoice(id: "gpt-x", name: "GPT X")],
+                    usage: [UsageWindow(name: "30-day", utilization: 1, resetsAt: nil)])
+            }
+        ]
+        await model.reload()
+        #expect(model.models[.codex] == [ModelChoice(id: "gpt-x", name: "GPT X")])
+        #expect(model.usage[.codex]?.first?.name == "30-day")
+        #expect(model.status(of: .opencode) == .missing(searched: ""))
+        #expect(model.modelName("gpt-x", for: .codex) == "GPT X")
+        #expect(model.modelName(nil, for: .codex) == "Default")
+
+        model.engineOverride = { FakeEngine() }
+        model.startThread(project: "/work/app", prompt: "go", model: nil, mode: .ask, worktree: false)
+        model.current?.apply(.usage([UsageWindow(name: "5-hour", utilization: 0.2, resetsAt: nil)]))
+        #expect(model.usage[.claude]?.first?.name == "5-hour")
+        #expect(model.usage[.codex]?.first?.name == "30-day", "Claude's report doesn't overwrite Codex's")
+    }
 }

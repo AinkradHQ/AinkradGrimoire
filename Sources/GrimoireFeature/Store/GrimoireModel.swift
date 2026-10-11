@@ -22,7 +22,7 @@ final class GrimoireModel {
 
     /// Settable for tests; the app only changes them in `reload()`.
     var cli: CLIStatus = .checking
-    /// Codex's and OpenCode's CLIs, as their listers found them.
+    /// Codex's, OpenCode's and agy's CLIs, as their listers found them.
     var otherCLIs: [Harness: CLIStatus] = [:]
     /// Found when any agent is: Claude's status unless only another agent is installed.
     var agentStatus: CLIStatus {
@@ -67,14 +67,17 @@ final class GrimoireModel {
 
     let settings: SettingsStore
     /// The CLI's rate-limit windows, as last reported by any thread.
-    private(set) var usage: [UsageWindow] = []
+    /// Each agent's rate-limit windows: read while listing, then as threads report them.
+    private(set) var usage: [Harness: [UsageWindow]] = [:]
+    /// The models each non-Claude agent offers, for the model menus.
+    private(set) var models: [Harness: [ModelChoice]] = [:]
     var isShowingSettings = false
     private let signals: PluginSignalEmitter?
     private let apps: PluginAppLauncher?
     /// Why the last "open in Rune" didn't happen; cleared on the next try.
     private(set) var terminalProblem: String?
     private let sessionsRoot: URL
-    typealias Lister = @Sendable ([String: String]) async -> (CLIStatus, [ClaudeSessionSummary])
+    typealias Lister = @Sendable ([String: String]) async -> AgentListing
     /// Finds each non-Claude CLI and lists its threads; a harness without one
     /// counts as missing. Tests hand in fixtures.
     var listers: [Harness: Lister] = [:]
@@ -84,19 +87,23 @@ final class GrimoireModel {
         [
             .codex: { environment in
                 let codex = GrimoireModel.detectCLI(command: "codex", environment: environment).status
-                guard case .found(let path, _) = codex else { return (codex, []) }
-                return (codex, CodexSessions.summaries(executable: URL(fileURLWithPath: path), environment: environment))
+                guard case .found(let path, _) = codex else { return AgentListing(status: codex) }
+                return CodexSessions.listing(status: codex, executable: URL(fileURLWithPath: path), environment: environment)
             },
             .opencode: { environment in
                 let status = GrimoireModel.detectCLI(command: "opencode", environment: environment).status
-                guard case .found(let path, _) = status else { return (status, []) }
+                guard case .found(let path, _) = status else { return AgentListing(status: status) }
                 let server = openCode.server(executable: URL(fileURLWithPath: path), environment: environment)
-                return (status, await OpenCodeSessions.summaries(server: server))
+                let threads = await OpenCodeSessions.summaries(server: server)
+                return AgentListing(
+                    status: status, threads: threads, models: await OpenCodeSessions.models(server: server, recent: threads))
             },
             .agy: { environment in
                 let status = GrimoireModel.detectCLI(command: "agy", environment: environment).status
-                guard case .found = status else { return (status, []) }
-                return (status, AgySessions.summaries())
+                guard case .found(let path, _) = status else { return AgentListing(status: status) }
+                return AgentListing(
+                    status: status, threads: AgySessions.summaries(),
+                    models: AgySessions.models(executable: URL(fileURLWithPath: path), environment: environment))
             },
         ]
     }
@@ -156,19 +163,21 @@ final class GrimoireModel {
         let root = sessionsRoot
         let override = settings.cliPathOverride
         let listers = listers
-        let (detected, others, listed) = await Task.detached(priority: .userInitiated) {
+        let (detected, listings, listed) = await Task.detached(priority: .userInitiated) {
             let detected = Self.detectCLI(override: override)
-            var others: [Harness: CLIStatus] = [:]
+            var listings: [Harness: AgentListing] = [:]
             var threads = ClaudeSessions.projects(root: root).flatMap(\.sessions)
             for harness in Harness.allCases where harness != .claude {
-                let (status, listed) = await listers[harness]?(detected.environment) ?? (.missing(searched: ""), [])
-                others[harness] = status
-                threads += listed
+                let listing = await listers[harness]?(detected.environment) ?? AgentListing(status: .missing(searched: ""))
+                listings[harness] = listing
+                threads += listing.threads
             }
-            return (detected, others, ClaudeSessions.grouped(threads))
+            return (detected, listings, ClaudeSessions.grouped(threads))
         }.value
         cli = detected.status
-        otherCLIs = others
+        otherCLIs = listings.mapValues(\.status)
+        models = listings.mapValues(\.models)
+        for (harness, listing) in listings where !listing.usage.isEmpty { usage[harness] = listing.usage }
         environment = detected.environment
         self.listed = listed
         // A draft is done once its session shows up in the listing.
@@ -339,7 +348,7 @@ final class GrimoireModel {
         let live = LiveThread(
             entries: entries, startOptions: options, model: model,
             makeEngine: { [weak self] in self?.makeEngine(harness) ?? UnavailableEngine() })
-        live.onUsage = { [weak self] windows in self?.usage = windows }
+        live.onUsage = { [weak self] windows in self?.usage[harness] = windows }
         live.onNeedsYou = { [weak self, weak live] request in
             guard let self, let live else { return }
             self.notifyNeedsYou(live, request: request)
@@ -396,6 +405,12 @@ final class GrimoireModel {
     }
 
     var mostRecentProject: String? { projects.first?.path }
+
+    /// `id`'s menu name for `harness`: its listed name, else a tidied id.
+    func modelName(_ id: String?, for harness: Harness) -> String {
+        guard let id else { return "Default" }
+        return models[harness]?.first { $0.id == id }?.name ?? ModelName.display(id)
+    }
 
     var selectedThread: ClaudeSessionSummary? {
         guard let id = selectedThreadID else { return nil }

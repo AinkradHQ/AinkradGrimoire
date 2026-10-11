@@ -8,6 +8,10 @@ enum CodexSessions {
     static func summaries(executable: URL, environment: [String: String], limit: Int = 200) -> [ClaudeSessionSummary] {
         guard let server = try? OneShotServer(executable: executable, environment: environment) else { return [] }
         defer { server.close() }
+        return summaries(server: server, limit: limit)
+    }
+
+    private static func summaries(server: OneShotServer, limit: Int = 200) -> [ClaudeSessionSummary] {
         var summaries: [ClaudeSessionSummary] = []
         var cursor: JSONValue = .null
         repeat {
@@ -16,6 +20,23 @@ enum CodexSessions {
             cursor = page["nextCursor"] ?? .null
         } while cursor != .null && summaries.count < limit
         return summaries
+    }
+
+    /// Threads, visible models and current rate limits from one app-server.
+    static func listing(status: CLIStatus, executable: URL, environment: [String: String]) -> AgentListing {
+        guard let server = try? OneShotServer(executable: executable, environment: environment) else {
+            return AgentListing(status: status)
+        }
+        defer { server.close() }
+        var listing = AgentListing(status: status, threads: summaries(server: server))
+        listing.models = (server.call("model/list", [:])?["data"]?.arrayValue ?? []).compactMap(model)
+        listing.usage = CodexProtocol.usage(server.call("account/rateLimits/read", .null)?["rateLimits"]) ?? []
+        return listing
+    }
+
+    static func model(_ entry: JSONValue) -> ModelChoice? {
+        guard entry["hidden"] != true, let id = entry["model"]?.stringValue ?? entry["id"]?.stringValue else { return nil }
+        return ModelChoice(id: id, name: entry["displayName"]?.stringValue ?? id)
     }
 
     /// A stored thread's history as transcript rows.

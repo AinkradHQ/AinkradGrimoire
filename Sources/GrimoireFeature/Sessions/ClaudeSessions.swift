@@ -20,6 +20,21 @@ public enum Harness: String, Sendable, CaseIterable {
     var command: String { rawValue }
 }
 
+/// A model an agent offers: `id` goes on the wire, `name` in menus.
+public struct ModelChoice: Sendable, Equatable, Identifiable {
+    public var id: String
+    public var name: String
+}
+
+/// What a non-Claude CLI's lister found: whether it's installed, its stored
+/// threads, the models it offers, and its rate-limit windows if it reports them.
+struct AgentListing: Sendable, Equatable {
+    var status: CLIStatus
+    var threads: [ClaudeSessionSummary] = []
+    var models: [ModelChoice] = []
+    var usage: [UsageWindow] = []
+}
+
 /// One agent session (Claude Code or Codex), as listed in a project: enough to show the row and
 /// to `--resume` it. Read from the CLI's own file, so a thread started in the
 /// terminal shows up here and vice versa.

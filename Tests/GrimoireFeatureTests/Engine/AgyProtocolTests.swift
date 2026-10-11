@@ -65,4 +65,14 @@ struct AgyProtocolTests {
         #expect(summary.lastActivity == Date(timeIntervalSince1970: 1_791_657_664))
         #expect(AgySessions.summary(id: "c2", title: "", modified: "", workspaces: "[]") == nil)
     }
+
+    @Test("agy models: one id and display name per tab-separated line")
+    func models() {
+        #expect(
+            AgySessions.parseModels("gemini-3.8-flash-high\tGemini 3.8 Flash (High)\nFetching…\nclaude-opus-5-5-low\tClaude Opus 5.5 (Low)\n")
+                == [
+                    ModelChoice(id: "gemini-3.8-flash-high", name: "Gemini 3.8 Flash (High)"),
+                    ModelChoice(id: "claude-opus-5-5-low", name: "Claude Opus 5.5 (Low)"),
+                ])
+    }
 }
