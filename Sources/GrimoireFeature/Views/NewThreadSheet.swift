@@ -9,6 +9,8 @@ struct NewThreadSheet: View {
     let dismiss: () -> Void
     @State private var project: String
     @State private var agentModel: String
+    /// The non-Claude agent's model; nil is its configured default.
+    @State private var otherModel: String?
     @State private var mode: PermissionMode
     @State private var worktree: Bool
     @State private var harness: Harness
@@ -63,9 +65,7 @@ struct NewThreadSheet: View {
                     AinkradSegmentedPicker(items: ["opus", "sonnet", "haiku"], selection: $agentModel) { $0.capitalized }
                         .fixedSize()
                 } else {
-                    Text("\(harness.displayName)'s default, from its config")
-                        .font(skin.font(AinkradFontToken(sizeKey: "t12")))
-                        .foregroundStyle(skin.color(skin.text.muted))
+                    otherModelMenu
                 }
             }
             row("Mode") {
@@ -86,7 +86,10 @@ struct NewThreadSheet: View {
             }
         }
         .onChange(of: project) { if !canUseWorktree { worktree = false } }
-        .onChange(of: harness) { if !canUseWorktree { worktree = false } }
+        .onChange(of: harness) {
+            if !canUseWorktree { worktree = false }
+            otherModel = nil
+        }
     }
 
     private func row(_ label: String, @ViewBuilder content: () -> some View) -> some View {
@@ -118,6 +121,24 @@ struct NewThreadSheet: View {
         .help(project)
     }
 
+    private var otherModelMenu: some View {
+        let choices = [ModelChoice(id: "", name: "Default")] + (model.models[harness] ?? [])
+        return AinkradMenuButton(
+            items: choices.map { choice in
+                AinkradMenuItem(title: choice.name, systemName: choice.id == (otherModel ?? "") ? "checkmark" : nil) {
+                    otherModel = choice.id.isEmpty ? nil : choice.id
+                }
+            }
+        ) {
+            PullDownLabel {
+                Text(model.modelName(otherModel, for: harness))
+                    .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+                    .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+            }
+        }
+        .fixedSize()
+    }
+
     private var isGitRepository: Bool {
         FileManager.default.fileExists(atPath: (project as NSString).appendingPathComponent(".git"))
     }
@@ -146,7 +167,7 @@ struct NewThreadSheet: View {
         guard canStart else { return }
         model.startThread(
             project: project, prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
-            model: harness == .claude ? agentModel : nil, mode: mode, worktree: worktree, harness: harness)
+            model: harness == .claude ? agentModel : otherModel, mode: mode, worktree: worktree, harness: harness)
         dismiss()
     }
 }

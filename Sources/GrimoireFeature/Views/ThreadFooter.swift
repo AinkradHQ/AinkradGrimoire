@@ -85,12 +85,21 @@ struct ThreadFooter: View {
 
     @ViewBuilder
     private var modelMenu: some View {
-        // Codex's and OpenCode's models come from their own config; Grimoire shows, not picks, them.
-        if harness != .claude {
-            MenuValue(caption: "Model", value: live.model.map(ModelName.display) ?? "Default")
-                .padding(.horizontal, skin.size.s10)
-        } else {
+        if harness == .claude {
             claudeModelMenu
+        } else {
+            // The models the agent listed; it applies the pick from the next turn.
+            AinkradMenuButton(
+                items: (model.models[harness] ?? []).map { choice in
+                    AinkradMenuItem(title: choice.name, systemName: choice.id == live.model ? "checkmark" : nil) {
+                        live.setModel(choice.id)
+                    }
+                }
+            ) {
+                PullDownLabel { MenuValue(caption: "Model", value: model.modelName(live.model, for: harness)) }
+            }
+            .fixedSize()
+            .help("Model")
         }
     }
 

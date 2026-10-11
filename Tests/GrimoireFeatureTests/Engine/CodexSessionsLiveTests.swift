@@ -16,6 +16,10 @@ struct CodexSessionsLiveTests {
         let newest = try #require(threads.first, "no stored Codex threads")
         #expect(threads.allSatisfy { $0.harness == .codex })
         #expect(threads == threads.sorted { $0.lastActivity > $1.lastActivity })
+        let listing = CodexSessions.listing(
+            status: .found(path: executable.path, version: ""), executable: executable, environment: environment)
+        #expect(!listing.models.isEmpty, "model/list offers models")
+        #expect(!listing.usage.isEmpty, "account/rateLimits/read reports a window")
         let history = CodexSessions.history(threadID: newest.id, executable: executable, environment: environment)
         #expect(history.contains { if case .user = $0 { true } else { false } })
     }
