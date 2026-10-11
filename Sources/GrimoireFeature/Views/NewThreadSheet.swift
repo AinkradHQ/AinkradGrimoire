@@ -21,8 +21,10 @@ struct NewThreadSheet: View {
     init(model: GrimoireModel, dismiss: @escaping () -> Void) {
         self.model = model
         self.dismiss = dismiss
-        let project = model.selectedThread?.projectPath ?? model.mostRecentProject ?? ""
+        let preset = model.newThreadPreset
+        let project = preset?.project ?? model.selectedThread?.projectPath ?? model.mostRecentProject ?? ""
         _project = State(initialValue: project)
+        _prompt = State(initialValue: preset?.prompt ?? "")
         _agentModel = State(initialValue: model.settings.defaultModel)
         _harness = State(initialValue: Self.installed(model).first ?? .claude)
         _mode = State(initialValue: model.settings.defaultMode)

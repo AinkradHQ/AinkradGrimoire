@@ -6,6 +6,8 @@ import SwiftUI
 struct RootView: View {
     let model: GrimoireModel
     let theme: HostTheme
+    /// What another app sent with opening this window (`host.apps.takePendingLaunch()`), read once.
+    var takeLaunch: () -> String? = { nil }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -20,10 +22,15 @@ struct RootView: View {
             contentWidth: NewThreadSheet.width
         ) {
             NewThreadSheet(model: model) { model.isComposingNewThread = false }
+                // An asked-for project and request are for this sheet only.
+                .onDisappear { model.newThreadPreset = nil }
         }
         .ainkradToastHost()
         .ainkradHostTheme(theme)
-        .task { model.start() }
+        .task {
+            model.start()
+            model.handleLaunch(takeLaunch())
+        }
     }
 }
 

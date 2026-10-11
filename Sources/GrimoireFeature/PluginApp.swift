@@ -35,7 +35,7 @@ public struct GrimoireApp: AinkradApp, AinkradAppTeardown {
     }
 
     public static func makeRootView(host: HostServices) -> AnyView {
-        AnyView(RootView(model: model(host: host), theme: host.theme))
+        AnyView(RootView(model: model(host: host), theme: host.theme) { host.apps.takePendingLaunch() })
     }
 
     /// Grimoire reads the CLIs' own settings; its own page arrives with the settings screen.

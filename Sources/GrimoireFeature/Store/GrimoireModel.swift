@@ -61,6 +61,8 @@ final class GrimoireModel {
     var searchText = ""
     var showsAllProjects = false
     var isComposingNewThread = false
+    /// The New Thread sheet's project and request, when another app asked (see `handleLaunch`).
+    var newThreadPreset: NewThreadPreset?
     /// The review pane beside the conversation; stays open across threads.
     var isReviewOpen = false
     private var reviews: [String: ReviewModel] = [:]
@@ -471,3 +473,15 @@ final class GrimoireModel {
             .first { $0.first?.isNumber == true }.map(String.init)
     }
 }
+
+extension GrimoireModel {
+    /// A payload another app sent with opening this window: Ask Agent opens the New Thread sheet on its
+    /// project with its request, for the user to choose the agent and start — nothing is sent unseen.
+    func handleLaunch(_ payload: String?) {
+        guard let ask = AskLaunch.decode(payload) else { return }
+        if !projects.contains(where: { $0.path == ask.path }) { openFolder(URL(fileURLWithPath: ask.path)) }
+        newThreadPreset = NewThreadPreset(project: ask.path, prompt: ask.prompt)
+        isComposingNewThread = true
+    }
+}
+
