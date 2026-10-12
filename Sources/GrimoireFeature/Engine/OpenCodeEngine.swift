@@ -113,7 +113,7 @@ public final class OpenCodeEngine: HarnessEngine {
             do {
                 _ = try await server.call(method, path, directory: directory, body: body)
             } catch {
-                self?.continuation.yield(.error(String(describing: error)))
+                self?.continuation.yield(.error(OpenCodeProtocol.explain(String(describing: error))))
             }
         }
     }

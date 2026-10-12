@@ -72,6 +72,14 @@ struct OpenCodeProtocolTests {
         #expect(wire.decode(idle) == [.turnFinished(TurnResult(outcome: .success, sessionID: "s", costUSD: nil, text: nil))])
     }
 
+    @Test("a model OpenCode can't find says how to pick another; other errors read as they are")
+    func modelNotFoundExplains() {
+        let raw = "ProviderModelNotFoundError: Model not found: anthropic/claude-sonnet-4-5."
+        #expect(OpenCodeProtocol.explain(raw).hasPrefix(raw))
+        #expect(OpenCodeProtocol.explain(raw).contains("Model menu"))
+        #expect(OpenCodeProtocol.explain("quota") == "quota")
+    }
+
     @Test("modes become permission rules and an agent; models split into provider and id")
     func outbound() {
         #expect(OpenCodeProtocol.permission(for: .bypassPermissions) == [["permission": "*", "pattern": "*", "action": "allow"]])
