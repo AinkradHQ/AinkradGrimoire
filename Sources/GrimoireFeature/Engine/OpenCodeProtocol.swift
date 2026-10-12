@@ -55,6 +55,13 @@ struct OpenCodeProtocol {
         return .object(body)
     }
 
+    /// OpenCode's error, plus what to do when it is one the user can fix here. "Default" is the model in the
+    /// user's own OpenCode config, which may name one OpenCode can't reach (E0 GD7).
+    static func explain(_ message: String) -> String {
+        guard message.contains("ModelNotFound") || message.localizedCaseInsensitiveContains("model not found") else { return message }
+        return "\(message)\nPick another model in the Model menu below — Default is the one in your OpenCode config."
+    }
+
     static func answer(_ decision: ApprovalDecision) -> JSONValue {
         switch decision {
         case .allow: ["reply": "once"]
@@ -93,7 +100,7 @@ struct OpenCodeProtocol {
             ending =
                 error["name"] == "MessageAbortedError"
                 ? .interrupted
-                : .failed(error["data"]?["message"]?.stringValue ?? error["name"]?.stringValue ?? "OpenCode failed")
+                : .failed(Self.explain(error["data"]?["message"]?.stringValue ?? error["name"]?.stringValue ?? "OpenCode failed"))
             return []
         case "session.idle":
             defer { ending = nil }

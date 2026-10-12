@@ -186,7 +186,8 @@ private struct StatusLine: View {
         case .needsYou:
             line(dot: statusColors.warning, text: "Waiting for your approval", detail: nil)
         case .failed(let message):
-            line(dot: statusColors.danger, text: message, detail: nil)
+            // An error can carry what to do next on a second line (E0 GD7): let it wrap.
+            line(dot: statusColors.danger, text: message, detail: nil, lines: 3)
         case .idle:
             if live.costUSD > 0 {
                 line(
@@ -201,10 +202,10 @@ private struct StatusLine: View {
         return seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
     }
 
-    private func line(dot: Color, text: String, detail: String?) -> some View {
+    private func line(dot: Color, text: String, detail: String?, lines: Int = 1) -> some View {
         HStack(spacing: skin.size.s8) {
             Circle().fill(dot).frame(width: skin.size.s7, height: skin.size.s7)
-            Text(text).lineLimit(1)
+            Text(text).lineLimit(lines)
             if let detail {
                 Text(detail).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                     .foregroundStyle(skin.color(skin.text.faint))
