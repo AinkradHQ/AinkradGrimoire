@@ -59,6 +59,16 @@ final class ScreenSnapshotTests: XCTestCase {
             NewThreadSheet(model: model) {}.padding(20), named: "composer", size: CGSize(width: 600, height: 460))
     }
 
+    /// GD15: a long changed line wraps under its text instead of ending in "…".
+    func testDiffWrapsLongLines() {
+        let long = "let message = \"The agent exited mid-turn, so this changed end of the line must stay readable\""
+        let diff = AinkradDiffEngine.compute(
+            old: "let a = 1\n" + long.replacingOccurrences(of: "readable", with: "visible"),
+            new: "let a = 1\n" + long, path: "a.swift")
+        Snapshot.assertMatches(
+            DiffBlock(diff: diff).padding(12), named: "diff-long-lines", size: CGSize(width: 360, height: 220))
+    }
+
     // MARK: - Fixtures
 
     private func assertThread(_ model: GrimoireModel, named name: String, width: CGFloat = threadSize.width) throws {
