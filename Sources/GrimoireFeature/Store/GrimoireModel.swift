@@ -61,6 +61,9 @@ final class GrimoireModel {
     var searchText = ""
     var showsAllProjects = false
     var isComposingNewThread = false
+    /// Bumped by ⌘F and ⌘L; the sidebar search and the composer take focus when they change.
+    var searchFocusRequest = 0
+    var composerFocusRequest = 0
     /// The New Thread sheet's project and request, when another app asked (see `handleLaunch`).
     var newThreadPreset: NewThreadPreset?
     /// The review pane beside the conversation; stays open across threads.

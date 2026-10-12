@@ -123,6 +123,32 @@ struct LiveThreadTests {
         #expect(tools.first?.result?.isError == true)
     }
 
+    @Test("GD17: Stop is offered while a turn runs or waits; Always allow only when the agent suggests a rule")
+    func shortcutAvailability() {
+        let (live, _) = make()
+        #expect(!live.canInterrupt)
+        live.send("go")
+        #expect(live.canInterrupt)
+        #expect(!live.canAllowAlways)
+        live.apply(
+            .approval(
+                ApprovalRequest(id: "r1", toolUseID: "t", toolName: "Bash", input: [:], summary: "a", suggestions: [])))
+        #expect(live.status == .needsYou)
+        #expect(live.canInterrupt)
+        #expect(!live.canAllowAlways)
+        live.answer(.allow)
+        live.apply(
+            .approval(
+                ApprovalRequest(
+                    id: "r2", toolUseID: "t", toolName: "Edit", input: [:], summary: "a",
+                    suggestions: [["mode": "acceptEdits"]])))
+        #expect(live.canAllowAlways)
+        live.answer(.deny(reason: "no"))
+        #expect(!live.canAllowAlways)
+        live.apply(.turnFinished(TurnResult(outcome: .failed("boom"), sessionID: "s1", costUSD: nil, text: nil)))
+        #expect(!live.canInterrupt)
+    }
+
     @Test("an exit while idle stays idle")
     func exitWhileIdle() {
         let (live, _) = make()

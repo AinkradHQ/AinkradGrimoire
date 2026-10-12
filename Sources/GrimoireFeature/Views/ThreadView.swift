@@ -39,7 +39,7 @@ struct ThreadView: View {
         AinkradIconButton(systemName: "terminal", size: skin.size.s30, tooltip: "Open a terminal here (Rune)") {
             model.openTerminal(for: thread)
         }
-        AinkradIconButton(systemName: "plusminus", size: skin.size.s30, tooltip: "Review changes") {
+        AinkradIconButton(systemName: "plusminus", size: skin.size.s30, tooltip: "Review changes (⌘⇧R)") {
             model.isReviewOpen.toggle()
         }
         // agy has no fork.
@@ -166,15 +166,20 @@ private struct ThinkingRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s6) {
-            HStack(spacing: skin.size.s6) {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
-                Text("Thinking")
+            // A plain button, so Full Keyboard Access can focus it and Space expands it.
+            Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
+                isExpanded.toggle()
+            } label: {
+                HStack(spacing: skin.size.s6) {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
+                    Text("Thinking")
+                }
+                .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+                .foregroundStyle(skin.color(skin.text.faint))
+                .contentShape(Rectangle())
             }
-            .font(skin.font(AinkradFontToken(sizeKey: "t12")))
-            .foregroundStyle(skin.color(skin.text.faint))
-            .contentShape(Rectangle())
-            .onTapGesture { isExpanded.toggle() }
+            .buttonStyle(.plain)
             if isExpanded {
                 Text(text)
                     .font(skin.font(AinkradFontToken(sizeKey: "t12")))
@@ -221,6 +226,15 @@ private struct ToolCard: View {
     }
 
     private var header: some View {
+        Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
+            isExpanded.toggle()
+        } label: {
+            headerLabel
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var headerLabel: some View {
         HStack(spacing: skin.size.s8) {
             Circle().fill(dotColor).frame(width: skin.size.s7, height: skin.size.s7)
             Text(call.name)
@@ -245,7 +259,6 @@ private struct ToolCard: View {
             .lineLimit(1)
         }
         .contentShape(Rectangle())
-        .onTapGesture { isExpanded.toggle() }
     }
 
     private var detail: AnyView? {

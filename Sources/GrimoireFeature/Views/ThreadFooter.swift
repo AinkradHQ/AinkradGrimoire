@@ -27,11 +27,14 @@ struct ThreadFooter: View {
                 modeMenu
                 modelMenu
             } trailing: {
-                if live.status == .working || live.status == .needsYou {
+                if live.canInterrupt {
                     AinkradButton(title: "Stop", style: .danger, icon: "stop.fill") { live.interrupt() }
                         .fixedSize()
+                        .help("Stop (⌘.)")
                 }
             }
+            // ⌘L: a fresh editor autofocuses — the kit's composer has no other focus hook. The draft is kept.
+            .id(model.composerFocusRequest)
             .padding(.horizontal, skin.size.s14)
             .padding(.bottom, skin.size.s14)
         }
@@ -160,7 +163,7 @@ private struct ApprovalBar: View {
         var actions: [AinkradDecisionBar.Action] = [
             .init(title: "Deny", style: .ghost) { live.answer(.deny(reason: "Denied in Grimoire.")) }
         ]
-        if !request.suggestions.isEmpty {
+        if live.canAllowAlways {
             actions.append(.init(title: "Always allow", style: .secondary) { live.answer(.allowAlways) })
         }
         actions.append(.init(title: "Allow once", style: .primary) { live.answer(.allow) })

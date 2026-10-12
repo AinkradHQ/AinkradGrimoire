@@ -63,6 +63,10 @@ final class LiveThread {
     }
 
     var isRunning: Bool { engine != nil }
+    /// Stop is offered (button and ⌘.) while a turn runs or waits on an approval.
+    var canInterrupt: Bool { status == .working || status == .needsYou }
+    /// "Always allow" is offered (button and ⌘⌥↩) only when the agent suggested a standing rule.
+    var canAllowAlways: Bool { pendingApproval?.suggestions.isEmpty == false }
 
     // MARK: - Actions
 

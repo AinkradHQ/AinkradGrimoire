@@ -63,6 +63,24 @@ struct SidebarModelTests {
         #expect(model.visibleProjects.count == 13)
     }
 
+    @Test("GD17: next/previous thread walks sidebar order, skips collapsed projects, and clamps at both ends")
+    func adjacentThread() {
+        let projects = [project("/a", ["a0", "a1"]), project("/b", ["b0"]), project("/c", ["c0", "c1"])]
+        let open: (ClaudeProject) -> Bool = { $0.path != "/b" }
+        func step(_ offset: Int, from selected: String?) -> String? {
+            GrimoireModel.adjacentThread(offset, from: selected, in: projects, isExpanded: open)
+        }
+        #expect(step(1, from: "/a-0") == "/a-1")
+        #expect(step(1, from: "/a-1") == "/c-0")  // across the collapsed /b
+        #expect(step(-1, from: "/c-0") == "/a-1")
+        #expect(step(1, from: "/c-1") == "/c-1")  // last: stays
+        #expect(step(-1, from: "/a-0") == "/a-0")  // first: stays
+        #expect(step(1, from: nil) == "/a-0")
+        #expect(step(-1, from: nil) == "/c-1")
+        #expect(step(1, from: "/b-0") == "/a-0")  // hidden selection starts over
+        #expect(GrimoireModel.adjacentThread(1, from: nil, in: [], isExpanded: open) == nil)
+    }
+
     private func emptyRoot() -> URL {
         URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-empty-\(UUID())")
     }
