@@ -105,9 +105,30 @@ struct LiveThreadTests {
         live.apply(.turnFinished(TurnResult(outcome: .failed("boom"), sessionID: "s1", costUSD: nil, text: nil)))
         #expect(live.status == .failed("boom"))
         live.send("again")
+        live.stop()
         live.apply(.exited(code: 0))
         #expect(live.status == .idle)
         #expect(!live.isRunning)
+    }
+
+    @Test("GD13: a CLI that dies mid-turn with no stderr fails the turn and closes its running tool cards")
+    func deathMidTurn() {
+        let (live, _) = make()
+        live.send("go")
+        live.apply(.block(messageID: "m1", .toolUse(id: "t1", name: "Bash", input: .object([:]))))
+        live.apply(.exited(code: 9))
+        #expect(live.status == .failed("The agent exited mid-turn (code 9)"))
+        #expect(!live.isRunning)
+        let tools = live.entries.compactMap { if case .tool(let call) = $0 { call } else { nil } }
+        #expect(tools.first?.result?.isError == true)
+    }
+
+    @Test("an exit while idle stays idle")
+    func exitWhileIdle() {
+        let (live, _) = make()
+        live.ensureStarted()
+        live.apply(.exited(code: 0))
+        #expect(live.status == .idle)
     }
 }
 
