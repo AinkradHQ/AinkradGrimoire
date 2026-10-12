@@ -23,6 +23,18 @@ struct HarnessProcessTests {
         #expect(outputs == [.line("one"), .line("two"), .line("three"), .exited(code: 3, stderr: "oops\n")])
     }
 
+    /// The bug this guards (GD12): writing to a CLI that already exited raised SIGPIPE, which kills the
+    /// whole process — here the test runner, in the app the host. It must throw instead.
+    @Test("writing to a CLI that already exited throws instead of killing the process")
+    func writeAfterExitThrows() async throws {
+        let process = HarnessProcess(
+            executable: URL(fileURLWithPath: "/bin/sh"), arguments: ["-c", "exit 0"],
+            workingDirectory: URL(fileURLWithPath: NSTemporaryDirectory()), environment: [:])
+        try process.run()
+        for await _ in process.output {}
+        #expect(throws: (any Error).self) { try process.write("hello") }
+    }
+
     /// The bug this guards: `FileHandle.bytes` held a running child's output
     /// back, so a live session saw its first chunk and then nothing.
     @Test("a line arrives while the child is still running")

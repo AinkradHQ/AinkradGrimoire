@@ -52,6 +52,15 @@ final class HarnessProcess: @unchecked Sendable {
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
+        // A CLI that exits before we write to it (bad config, old version) closes the pipe; by default the
+        // write then raises SIGPIPE, which terminates the WHOLE host (exit 141). Without it the write throws
+        // EPIPE instead, which the caller handles. Same guard as the host's LSP/MCP transports.
+        Self.disableSigPipe(stdin)
+    }
+
+    static func disableSigPipe(_ pipe: Pipe) {
+        var on: Int32 = 1
+        _ = fcntl(pipe.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, &on)
     }
 
     func run() throws {

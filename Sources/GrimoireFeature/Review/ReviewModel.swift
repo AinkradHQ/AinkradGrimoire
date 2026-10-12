@@ -71,15 +71,30 @@ final class ReviewModel {
         await perform(["restore", "--staged", "--worktree", "--", file.path])
     }
 
+    /// Commits exactly the files the pane shows (this turn, the thread, or every uncommitted change) — never
+    /// whatever else happens to be dirty or staged in the repository.
     func commit() async {
         let message = commitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !message.isEmpty else { return }
-        guard await perform(["add", "-A"]), await perform(["commit", "-m", message]) else { return }
+        let paths = files.map(\.path)
+        guard !message.isEmpty, !paths.isEmpty else { return }
+        guard await perform(["add", "-A", "--"] + paths), await perform(["commit", "-m", message, "--"] + paths)
+        else { return }
         commitMessage = ""
     }
 
-    /// Commits, pushes the branch and opens a pull request with `gh`.
+    /// Branches a pull request never comes from: work on them lands by PR, so pushing there skips review.
+    static let protectedBranches: Set = ["main", "master", "development", "develop", "staging"]
+
+    /// Commits, pushes the branch and opens a pull request with `gh` — only from a feature branch.
     func commitAndOpenPullRequest() async {
+        let branch = (try? await git.run(["rev-parse", "--abbrev-ref", "HEAD"]))?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "HEAD"
+        if branch == "HEAD" || Self.protectedBranches.contains(branch) {
+            error = branch == "HEAD"
+                ? "Not on a branch. Check out a feature branch before opening a pull request."
+                : "On \(branch). Create a feature branch before opening a pull request."
+            return
+        }
         await commit()
         guard error == nil else { return }
         guard await perform(["push", "-u", "origin", "HEAD"]) else { return }
