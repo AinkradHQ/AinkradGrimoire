@@ -79,6 +79,9 @@ private final class OneShotServer {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
+        // The listing runs whenever the app becomes active: a `codex app-server` that dies at start must not
+        // take the host down with SIGPIPE on our first write.
+        HarnessProcess.disableSigPipe(input)
         try process.run()
         _ = call("initialize", ["clientInfo": ["name": "grimoire", "title": "Grimoire", "version": "0.1.0"], "capabilities": .null])
         send(["jsonrpc": "2.0", "method": "initialized"])

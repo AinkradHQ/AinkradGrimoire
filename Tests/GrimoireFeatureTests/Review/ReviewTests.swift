@@ -141,3 +141,67 @@ struct ReviewModelGitTests {
             try await git.run(["log", "-1", "--format=%s"]).trimmingCharacters(in: .whitespacesAndNewlines) == "add b")
     }
 }
+
+@MainActor
+@Suite("ReviewModel commit scope (real git)")
+struct ReviewCommitScopeTests {
+    private func repo() async throws -> (URL, Git, [String: String]) {
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-scope-\(UUID())")
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let environment = CLILocator.loginEnvironment()
+        let git = Git(directory: repo.path, environment: environment)
+        _ = try await git.run(["init", "-q", "-b", "development"])
+        _ = try await git.run(["config", "user.email", "t@t"])
+        _ = try await git.run(["config", "user.name", "t"])
+        for name in ["a.txt", "b.txt"] {
+            try "one\n".write(to: repo.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        _ = try await git.run(["add", "."])
+        _ = try await git.run(["commit", "-q", "-m", "root"])
+        return (repo, git, environment)
+    }
+
+    @Test("committing this turn leaves the repository's other changes alone")
+    func commitsOnlyTheShownFiles() async throws {
+        let (repo, git, environment) = try await repo()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try "two\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "two\n".write(to: repo.appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+        try "x\n".write(to: repo.appendingPathComponent("stray.txt"), atomically: true, encoding: .utf8)
+        let edit = ThreadEntry.tool(
+            ToolCall(
+                id: "1", name: "Edit",
+                input: ["file_path": .string(repo.appendingPathComponent("a.txt").path), "old_string": "one",
+                    "new_string": "two"],
+                result: ToolOutput(content: "ok", isError: false)))
+        let live = LiveThread(
+            entries: [.user("go"), edit], startOptions: EngineStartOptions(workingDirectory: repo),
+            makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        await review.load()
+        #expect(review.files.map(\.path) == ["a.txt"])
+
+        review.commitMessage = "turn"
+        await review.commit()
+        #expect(review.error == nil)
+        #expect(try await git.run(["show", "--name-only", "--format=", "HEAD"]).split(separator: "\n") == ["a.txt"])
+        let left = try await git.run(["status", "--porcelain"])
+        #expect(left.contains("b.txt") && left.contains("stray.txt"))
+    }
+
+    @Test("a pull request is never opened from a protected branch")
+    func refusesProtectedBranch() async throws {
+        let (repo, git, environment) = try await repo()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try "two\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: repo), makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        review.scope = .uncommitted
+        await review.load()
+        review.commitMessage = "nope"
+        await review.commitAndOpenPullRequest()
+        #expect(review.error?.contains("development") == true)
+        #expect(try await git.run(["log", "--format=%s"]).trimmingCharacters(in: .whitespacesAndNewlines) == "root")
+    }
+}
