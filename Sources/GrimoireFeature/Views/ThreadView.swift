@@ -344,11 +344,14 @@ struct DiffBlock: View {
             case .deletion: ("-", statusColors.danger)
             case .context: (" ", skin.color(skin.text.muted))
             }
-        return Text("\(sign) \(line.text)")
-            .foregroundStyle(color)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(line.kind == .context ? .clear : color.opacity(skin.opacity.o08))
+        // Long lines wrap under the text, not the sign, so the changed end stays readable.
+        return HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text("\(sign) ")
+            Text(line.text).fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(color)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(line.kind == .context ? .clear : color.opacity(skin.opacity.o08))
     }
 }
 
