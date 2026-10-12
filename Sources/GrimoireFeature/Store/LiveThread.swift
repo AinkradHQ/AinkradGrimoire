@@ -37,6 +37,8 @@ final class LiveThread {
     var onUsage: (([UsageWindow]) -> Void)?
 
     private var engine: HarnessEngine?
+    /// Set by `stop()`, so the exit it causes isn't reported as a crash.
+    private var stopping = false
     private let makeEngine: () -> HarnessEngine
     private let startOptions: EngineStartOptions
     /// The assistant message whose text is streaming into `entries[index]`.
@@ -69,6 +71,7 @@ final class LiveThread {
         guard engine == nil else { return }
         let engine = makeEngine()
         self.engine = engine
+        stopping = false
         do {
             try engine.start(startOptions)
         } catch {
@@ -119,6 +122,7 @@ final class LiveThread {
     }
 
     func stop() {
+        stopping = true
         engine?.stop()
     }
 
@@ -165,11 +169,21 @@ final class LiveThread {
             }
         case .error(let message):
             status = .failed(message)
-        case .exited:
+        case .exited(let code):
             engine = nil
             pendingApproval = nil
             turnStartedAt = nil
-            if status == .working || status == .needsYou { status = .idle }
+            streaming = nil
+            // Nothing runs once the CLI is gone, so no card may stay "running…".
+            for (_, index) in toolIndex {
+                guard case .tool(var call) = entries[index], call.result == nil else { continue }
+                call.result = ToolOutput(content: "Interrupted — the agent exited", isError: true)
+                entries[index] = .tool(call)
+            }
+            guard status == .working || status == .needsYou else { return }
+            // A CLI that dies mid-turn often leaves no stderr (crash, kill, OOM);
+            // say so rather than going quietly idle.
+            status = stopping ? .idle : .failed("The agent exited mid-turn (code \(code))")
         }
     }
 
