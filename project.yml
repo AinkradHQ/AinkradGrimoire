@@ -21,7 +21,8 @@ packages:
     # `settingsCatalog(host:)` in Sources/GrimoireFeature/PluginApp.swift needs.
     # bdf3b0d: Grimoire E1 — AinkradMarkdownText, AinkradDiffReview, AinkradDecisionBar, AinkradComposer (#108–#110).
     # AHEAD of the released host (0.30.0 embeds aa3fc95): loads only in a Debug host until the next host release.
-    revision: bdf3b0d8d235cf792ca4c2a986801162aee3e4fb
+    # 41cd9d9: markdown pipe tables and block quotes in AinkradMarkdownText (#111).
+    revision: 41cd9d9443e89bda6a08e0400a4a8d1377df3308
 targets:
   GrimoireFeature:
     type: library.static
