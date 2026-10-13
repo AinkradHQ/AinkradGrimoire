@@ -127,17 +127,3 @@ struct SidebarModelTests {
         #expect(ThreadView.resumeCommand(for: thread(.codex, id: "new-1")) == nil)
     }
 }
-
-/// GD27: under Glass a selected thread row's status and time take the colour readable on its accent fill.
-@MainActor
-@Suite("Selected row")
-struct SelectedRowTests {
-    @Test func glassSelectionTakesTheOnAccentColour() {
-        var glass = AinkradSkin.standard
-        glass.material.kind = "glass"
-        #expect(selectedRowText(glass, isSelected: true) == glass.color(glass.palette.accentPrimary).contrastingText)
-        #expect(selectedRowText(glass, isSelected: false) == nil)
-        // Neon's selection is a faint wash: statuses keep their colours.
-        #expect(selectedRowText(.standard, isSelected: true) == nil)
-    }
-}

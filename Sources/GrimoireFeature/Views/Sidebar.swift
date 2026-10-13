@@ -9,76 +9,91 @@ struct Sidebar: View {
     var isCompact = false
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradTypography) private var typography
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AinkradSpacing.sm) {
+        VStack(alignment: .leading, spacing: skin.size.s10) {
             HStack {
                 Text(skin.labelCased(GrimoireApp.displayName))
                     .font(skin.font(AinkradFontToken(sizeKey: "t14", weight: "bold")))
                     .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
                 Spacer(minLength: 0)
-                AinkradIconButton(systemName: "gearshape", size: skin.size.s26, tooltip: "Settings") {
-                    model.isShowingSettings.toggle()
-                }
-            }
-            .padding(.leading, skin.size.s6)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: AinkradSpacing.sm) {
-                    newThreadButton
-                    AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
-                        .fixedSize()
-                }
-                HStack(spacing: AinkradSpacing.sm) {
-                    newThreadButton
-                    openFolderIcon
-                }
-                HStack(spacing: AinkradSpacing.sm) {
-                    AinkradIconButton(systemName: "plus", size: skin.size.s30, tooltip: "New thread (⌘N)") {
-                        model.isComposingNewThread = true
-                    }
-                    .disabled(model.projects.isEmpty)
-                    openFolderIcon
-                }
-            }
-
-            AinkradSearchField(text: $model.searchText, placeholder: "Search threads", focus: $isSearchFocused)
-                // ⌘F. A turn later: focus set in the same update as the key event doesn't stick.
-                .onChange(of: model.searchFocusRequest) { DispatchQueue.main.async { isSearchFocused = true } }
-
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: skin.size.s1) {
-                    ForEach(model.visibleProjects) { project in
-                        projectSection(project)
-                    }
-                    if let title = Self.noMatchTitle(query: model.searchText, visible: model.visibleProjects) {
-                        // Search already covers every project, so "Clear search" is the one way out (mockup 12 D).
-                        AinkradEmptyState(
-                            icon: "magnifyingglass", title: title, message: "Search looks at thread titles and project names.",
-                            actionTitle: "Clear search"
-                        ) { model.searchText = "" }
-                        .padding(.top, skin.size.s20)
-                    }
-                    if model.hiddenProjectCount > 0 {
-                        ShowAllRow(count: model.projects.count) { model.showsAllProjects = true }
+                // First run shows the title alone (12 A); the gear comes back while Settings is open, the way out.
+                if !isFirstRun || model.isShowingSettings {
+                    AinkradIconButton(systemName: "gearshape", size: skin.size.s26, tooltip: "Settings") {
+                        model.isShowingSettings.toggle()
                     }
                 }
             }
-            .scrollIndicators(.never)
+            .frame(minHeight: skin.size.s26)
+            .padding(.leading, skin.size.s2)
 
-            footer
+            if !isFirstRun {
+                actions
+            }
+            // With no threads yet the sidebar is the title and its two actions (mockup 9).
+            if !isFirstRun, !model.projects.isEmpty {
+                AinkradSearchField(text: $model.searchText, placeholder: "Search threads", focus: $isSearchFocused)
+                    .keyHint("⌘K")
+                    // ⌘K (and ⌘F). A turn later: focus set in the same update as the key event doesn't stick.
+                    .onChange(of: model.searchFocusRequest) { DispatchQueue.main.async { isSearchFocused = true } }
+
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: skin.size.s1) {
+                        ForEach(model.visibleProjects) { project in
+                            projectSection(project)
+                        }
+                        if Self.noMatchTitle(query: model.searchText, visible: model.visibleProjects) != nil {
+                            NoMatchView(query: model.searchText) { model.searchText = "" }
+                        }
+                        if model.hiddenProjectCount > 0 {
+                            ShowAllRow(count: model.projects.count) { model.showsAllProjects = true }
+                        }
+                    }
+                }
+                .scrollIndicators(.never)
+                .padding(.horizontal, -skin.size.s4)
+
+                footer
+            }
         }
         .padding(.top, skin.size.s12)
-        .padding(.horizontal, skin.size.s10)
+        .padding(.horizontal, skin.size.s12)
         .padding(.bottom, skin.size.s10)
         // Gives way before the thread does in a narrow window (GD16).
         .frame(
-            minWidth: isCompact ? skin.size.s200 : skin.size.s260, idealWidth: isCompact ? skin.size.s200 : skin.size.s300,
-            maxWidth: isCompact ? skin.size.s200 : skin.size.s300)
+            minWidth: isCompact ? skin.size.s200 : skin.size.s260, idealWidth: isCompact ? skin.size.s200 : skin.size.s280,
+            maxWidth: isCompact ? skin.size.s200 : skin.size.s280)
         .frame(maxHeight: .infinity, alignment: .top)
         // Fill, not a rule.
         .background(theme.surface.opacity(skin.opacity.o35))
+    }
+
+    /// No coding agent found (12 A): nothing to list or start yet.
+    private var isFirstRun: Bool {
+        if case .missing = model.agentStatus { true } else { false }
+    }
+
+    private var actions: some View {
+        ViewThatFits(in: .horizontal) {
+            // Two equal halves (mockup `.side-actions .btn { flex: 1 }`).
+            HStack(spacing: skin.size.s8) {
+                newThreadButton.frame(maxWidth: .infinity)
+                AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
+                    .secondaryAccent()
+                    .fixedSize()
+                    .frame(maxWidth: .infinity)
+            }
+            HStack(spacing: AinkradSpacing.sm) {
+                newThreadButton
+                openFolderIcon
+            }
+            HStack(spacing: AinkradSpacing.sm) {
+                AinkradIconButton(systemName: "plus", size: skin.size.s30, tooltip: "New thread (⌘N)") { newThread() }
+                openFolderIcon
+            }
+        }
     }
 
     @ViewBuilder
@@ -101,22 +116,42 @@ struct Sidebar: View {
     }
 
     private var newThreadButton: some View {
-        AinkradButton(title: "New thread", style: .primary, icon: "plus") { model.isComposingNewThread = true }
-            .disabled(model.projects.isEmpty)
+        AinkradButton(title: "New thread", style: .primary, icon: "plus") { newThread() }
             .fixedSize()
+    }
+
+    /// With no project yet (mockup 9), New thread asks for its folder first.
+    private func newThread() {
+        if model.projects.isEmpty {
+            guard let url = FolderPicker.choose() else { return }
+            model.openFolder(url)
+        }
+        model.isComposingNewThread = true
     }
 
     private var openFolderIcon: some View {
         AinkradIconButton(systemName: "folder.badge.plus", size: skin.size.s30, tooltip: "Open folder…") { chooseFolder() }
     }
 
+    /// "● 1 working · ● 1 needs you" with their dots, and the agents found at the trailing edge (mockup 1).
     private var footer: some View {
         HStack(spacing: skin.size.s6) {
             let statuses = model.liveThreads.values.map(\.status)
             let working = statuses.filter { $0 == .working }.count
             let waiting = statuses.filter { $0 == .needsYou }.count
-            if working > 0 { Text("\(working) working") }
-            if waiting > 0 { Text("\(waiting) needs you") }
+            if working > 0 {
+                StatusDot(status: .working)
+                Text("\(working) working")
+            }
+            if working > 0, waiting > 0 { Text("·") }
+            if waiting > 0 {
+                StatusDot(status: .needsYou)
+                Text("\(waiting) needs you")
+            }
+            Spacer(minLength: skin.size.s6)
+            if model.isLoading {
+                AinkradSpinner()
+            }
             if model.cli == .checking {
                 Text("Looking for agents…")
             } else {
@@ -126,17 +161,15 @@ struct Sidebar: View {
                     return (harness.command, version)
                 }
                 Text(found.isEmpty ? "No coding agent found" : found.map(\.0).joined(separator: " · "))
+                    .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                    .truncationMode(.head)
                     .help(found.map { "\($0.0) \($0.1)" }.joined(separator: "\n"))
-            }
-            Spacer(minLength: 0)
-            if model.isLoading {
-                AinkradSpinner()
             }
         }
         .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
         .foregroundStyle(skin.color(skin.text.muted))
         .lineLimit(1)
-        .padding(.horizontal, skin.size.s6)
+        .padding(.horizontal, skin.size.s2)
     }
 
     /// "No threads match “x”" when a search hides every project (GD20); nil otherwise.
@@ -165,13 +198,14 @@ private struct ProjectRow: View {
         }
         .buttonStyle(.plain)
         .help(project.path)
-        .padding(.top, skin.size.s4)
+        .padding(.top, skin.size.s6)
     }
 
     private var label: some View {
         HStack(spacing: skin.size.s8) {
-            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
+            // The mockup's small faint ▾ / ▸.
+            Text(isExpanded ? "▾" : "▸")
+                .font(skin.font(AinkradFontToken(sizeKey: "t10")))
                 .foregroundStyle(skin.color(skin.text.faint))
                 .frame(width: skin.size.s10)
             Text(project.name)
@@ -243,6 +277,7 @@ private struct ThreadRow: View {
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradStatusColors) private var statusColors
     @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradTypography) private var typography
 
     var body: some View {
         Button(action: select) {  // design-lint: allow raw-control keyboard-reachable row (kit has no row button)
@@ -252,54 +287,75 @@ private struct ThreadRow: View {
         .help(thread.gitBranch.map { "\(thread.title) — \($0)" } ?? thread.title)
     }
 
+    /// Mockup `.thread`: dot column, title, time; under the title the agent badge, the worktree and a status.
     private var label: some View {
-        VStack(alignment: .leading, spacing: skin.size.s3) {
+        VStack(alignment: .leading, spacing: skin.size.s2) {
             HStack(spacing: skin.size.s8) {
                 StatusDot(status: status, isLimited: limit != nil)
+                    .frame(width: skin.size.s10)
                 Text(thread.title)
                     .font(skin.font(AinkradFontToken(sizeKey: "t13")))
-                    .foregroundStyle(onSelection ?? theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
+                    .foregroundStyle(theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
                     .lineLimit(1)
                 Spacer(minLength: skin.size.s4)
                 Text(RelativeTime.short(thread.lastActivity))
-                    .font(skin.font(AinkradFontToken(sizeKey: "t10", monospacedDigits: true)))
-                    .foregroundStyle(onSelection?.opacity(skin.opacity.o85) ?? skin.color(skin.text.faint))
+                    .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                    .foregroundStyle(skin.color(skin.text.faint))
             }
-            // On a selected row (a solid accent fill under Glass) badges take the
-            // foreground colour so they stay readable.
             HStack(spacing: skin.size.s6) {
-                HarnessBadge(harness: thread.harness, onSelection: isSelected)
+                HarnessBadge(harness: thread.harness)
                 if let worktree = thread.worktree {
-                    AinkradBadge(text: "⑂ \(worktree)", tint: isSelected ? theme.foreground : theme.accentSecondary)
+                    AinkradBadge(text: "⑂ \(worktree)", tint: theme.accentSecondary)
                 }
                 if let limit {
                     Text(limit.resetsAt.map { "limit · \(UsageLimit.clock($0))" } ?? "limit")
-                        .foregroundStyle(onSelection ?? statusColors.warning)
+                        .foregroundStyle(statusColors.warning)
                 } else if status == .needsYou {
-                    Text("needs you").foregroundStyle(onSelection ?? statusColors.warning)
+                    Text("needs you").foregroundStyle(statusColors.warning)
                 } else if case .failed = status {
-                    Text("failed").foregroundStyle(onSelection ?? statusColors.danger)
+                    Text("failed").foregroundStyle(statusColors.danger)
                 }
             }
             .font(skin.font(AinkradFontToken(sizeKey: "t11")))
-            .padding(.leading, skin.size.s15)
+            .foregroundStyle(skin.color(skin.text.faint))
+            .padding(.leading, skin.size.s18)
         }
-        .padding(.vertical, skin.size.s6)
-        .padding(.leading, skin.size.s8)
+        .padding(.vertical, skin.size.s7)
+        .padding(.leading, skin.size.s10)
         .padding(.trailing, skin.size.s8)
-        .ainkradRowBackground(isSelected: isSelected, isHovered: isHovered)
+        // GP1/GP65: a chamfered 22 % card under Neon, a 12 pt card with a hairline under Glass.
+        .ainkradRowBackground(isSelected: isSelected, isHovered: isHovered, style: .card)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
+        // Indented under its project (`.thread { margin-left: 12px }`).
+        .padding(.leading, skin.size.s12)
     }
-
-    private var onSelection: Color? { selectedRowText(skin, isSelected: isSelected) }
 }
 
-/// The colour readable on a selected row's accent fill under Glass, as the kit's own row text takes (GD27, Forge
-/// FD31): there a status's red or amber, or the faint time, sank into the blue. The status dot keeps its colour.
-/// Nil under Neon, whose selection is a faint wash.
-func selectedRowText(_ skin: AinkradSkin, isSelected: Bool) -> Color? {
-    isSelected && skin.usesNativeGlass ? skin.color(skin.palette.accentPrimary).contrastingText : nil
+/// "No threads match" (mockup 12 D): the query in quotes, what search covers, and a quiet way out. Search already
+/// covers every project, so there is no "Search all projects".
+private struct NoMatchView: View {
+    let query: String
+    let clear: () -> Void
+    @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradTheme) private var theme
+
+    var body: some View {
+        VStack(spacing: skin.size.s8) {
+            Text("No threads match")
+                .font(skin.font(AinkradFontToken(sizeKey: "t13", weight: "bold")))
+                .foregroundStyle(theme.foreground)
+            Text("“\(query.trimmingCharacters(in: .whitespaces))” isn’t in any thread title or project name.")
+                .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+                .foregroundStyle(skin.color(skin.text.muted))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            AinkradButton(title: "Clear search", style: .ghost, action: clear).borderless().secondaryAccent().fixedSize()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, skin.size.s18)
+        .padding(.vertical, skin.size.s30)
+    }
 }
 
 private struct ShowAllRow: View {
@@ -329,31 +385,18 @@ private struct ShowAllRow: View {
     }
 }
 
-/// Which agent a thread runs on: Claude in its brand clay, Codex in the
-/// foreground colour, OpenCode and agy in the theme's tertiary and primary accents.
+/// Which agent a thread runs on, in the kit's agent colour (mockup `.badge.claude` …).
 struct HarnessBadge: View {
-    // design-lint: allow raw-color kit-gap colors.providerBrand (Claude's brand clay, as Sage's model picker)
-    static let claudeTint = Color(.sRGB, red: 0xCC / 255, green: 0x78 / 255, blue: 0x5C / 255)
-
     let harness: Harness
-    /// On a selected row's accent fill every badge takes the foreground colour.
-    var onSelection = false
-    @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
-        AinkradBadge(
-            text: harness.displayName,
-            tint: onSelection ? theme.foreground : tint)
+        AinkradBadge(text: harness.displayName, tint: skin.agentColor(harness.agent))
     }
+}
 
-    private var tint: Color {
-        switch harness {
-        case .claude: Self.claudeTint
-        case .codex: theme.foreground
-        case .opencode: theme.accentTertiary
-        case .agy: theme.accentPrimary
-        }
-    }
+extension Harness {
+    var agent: AinkradAgent { AinkradAgent(identifier: rawValue) }
 }
 
 /// Compact relative times for thread rows: now, 5m, 3h, yesterday, Oct 2.

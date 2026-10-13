@@ -16,7 +16,8 @@ struct RootView: View {
         .foregroundStyle(theme.tokens.foreground)
         // Off while the New Thread sheet or a Forge ask is up, so ⌘F/⌘L and thread keys don't act behind it.
         .overlay { if !model.isComposingNewThread, model.forgeAsk == nil { ShortcutLayer(model: model) } }
-        .ainkradModal(
+        // The mockups' plain chamfered sheet, not the bracketed HUD panel (GP38).
+        .ainkradPanelModal(
             isPresented: Binding(get: { model.isComposingNewThread }, set: { model.isComposingNewThread = $0 }),
             contentWidth: NewThreadSheet.width
         ) {
@@ -39,7 +40,16 @@ private struct ShortcutLayer: View {
 
     var body: some View {
         ZStack {
-            claim("New thread", "n") { if !model.projects.isEmpty { model.isComposingNewThread = true } }
+            claim("New thread", "n") {
+                if !model.projects.isEmpty {
+                    model.isComposingNewThread = true
+                } else if case .found = model.agentStatus, let url = FolderPicker.choose() {
+                    // No project yet (mockup 9): pick its folder, then start.
+                    model.openFolder(url)
+                    model.isComposingNewThread = true
+                }
+            }
+            claim("Search threads", "k") { model.searchFocusRequest += 1 }
             claim("Search threads", "f") { model.searchFocusRequest += 1 }
             claim("Focus composer", "l") { model.composerFocusRequest += 1 }
             claim("Next thread", "]", [.command, .shift]) { model.selectAdjacentThread(1) }
@@ -102,16 +112,21 @@ struct MainPane: View {
                 NoAgentView(model: model, searched: searched)
             case .found:
                 if model.projects.isEmpty {
-                    EmptyWithActions(
-                        icon: "books.vertical",
+                    // Mockup 9: Open folder… beside New thread ⌘N (which asks for the folder first).
+                    AinkradEmptyState(
+                        icon: "square.stack.3d.up",
                         title: "No threads yet",
                         message:
-                            "Open a project folder and start a thread — or keep using the terminal; sessions you run there show up here too."
+                            "Open a project folder and start a thread — or keep using the terminal;\nsessions you run there show up here too.",
+                        actionTitle: "New thread ⌘N"
                     ) {
-                        AinkradButton(title: "Open folder…", style: .secondary) {
-                            if let url = FolderPicker.choose() { model.openFolder(url) }
+                        if let url = FolderPicker.choose() {
+                            model.openFolder(url)
+                            model.isComposingNewThread = true
                         }
-                        .fixedSize()
+                    }
+                    .secondaryAction("Open folder…") {
+                        if let url = FolderPicker.choose() { model.openFolder(url) }
                     }
                 } else if model.selectedThread == nil, model.selectedThreadID == nil {
                     AinkradEmptyState(
@@ -125,23 +140,6 @@ struct MainPane: View {
                     AinkradLoadingState(label: "Opening the thread…")
                 }
             }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// An empty state with more than one way out.
-struct EmptyWithActions<Actions: View>: View {
-    let icon: String
-    let title: String
-    let message: String
-    @ViewBuilder var actions: Actions
-    @Environment(\.ainkradSkin) private var skin
-
-    var body: some View {
-        VStack(spacing: skin.size.s14) {
-            AinkradEmptyState(icon: icon, title: title, message: message).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: skin.size.s8) { actions }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -163,9 +161,12 @@ struct ThreadHeader<Actions: View>: View {
     let thread: ClaudeSessionSummary
     /// The running agent's model, when it differs from the stored one.
     var model: String?
+    /// This session's running cost; shown only when the agent reports one (Claude).
+    var cost: Double = 0
     @ViewBuilder var actions: Actions
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradTypography) private var typography
 
     var body: some View {
         HStack(alignment: .top, spacing: skin.size.s10) {
@@ -197,18 +198,25 @@ struct ThreadHeader<Actions: View>: View {
         }
     }
 
+    /// "Ainkrad · feat/glass-sidebar · [Claude] opus 5.5 · $0.42" (mockup 2's crumbs).
     private func meta(project: Bool, branch: Bool, model showsModel: Bool) -> some View {
-        HStack(spacing: skin.size.s6) {
+        let mono = AinkradFontResolver.font(size: 11, mono: true, typography: typography)
+        return HStack(spacing: skin.size.s6) {
             if project {
                 Text((thread.projectPath as NSString).lastPathComponent)
+                Text("·")
             }
             if branch, let branch = thread.gitBranch {
+                Text(branch).font(mono)
                 Text("·")
-                Text(branch).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
             }
             HarnessBadge(harness: thread.harness).fixedSize()
             if showsModel, let model = (model ?? thread.model).map(ModelName.display) {
-                Text(model).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
+                Text(model).font(mono)
+            }
+            if showsModel, cost > 0 {
+                Text("·")
+                Text(String(format: "$%.2f", cost)).font(mono)
             }
         }
     }
@@ -216,6 +224,12 @@ struct ThreadHeader<Actions: View>: View {
 
 /// `claude-opus-5-5` → `opus 5.5`; anything else unchanged.
 enum ModelName {
+    /// `claude-opus-5-5` → `Opus 5.5`, as the composer's Model shows it (mockup 1).
+    static func title(_ id: String) -> String {
+        let name = display(id)
+        return name.prefix(1).uppercased() + name.dropFirst()
+    }
+
     static func display(_ id: String) -> String {
         var name = id.hasPrefix("claude-") ? String(id.dropFirst("claude-".count)) : id
         if let dash = name.firstIndex(of: "-"),
