@@ -189,6 +189,26 @@ struct ReviewCommitScopeTests {
         #expect(left.contains("b.txt") && left.contains("stray.txt"))
     }
 
+    /// GD24: agy's `Update` names only its file; the pane shows that file's diff from git.
+    @Test("an edit with no strings gets its diff from git")
+    func updateDiffFromGit() async throws {
+        let (repo, _, environment) = try await repo()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try "two\n".write(to: repo.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+        try "two\n".write(to: repo.appendingPathComponent("b.txt"), atomically: true, encoding: .utf8)
+        let update = ThreadEntry.tool(
+            ToolCall(
+                id: "1", name: "Update", input: ["file_path": .string(repo.appendingPathComponent("a.txt").path)],
+                result: ToolOutput(content: "", isError: false)))
+        let live = LiveThread(
+            entries: [.user("go"), update], startOptions: EngineStartOptions(workingDirectory: repo),
+            makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        await review.load()
+        #expect(review.files.map(\.path) == ["a.txt"])
+        #expect(review.files.first.map { ($0.added, $0.removed) } ?? (0, 0) == (1, 1))
+    }
+
     @Test("a pull request is never opened from a protected branch")
     func refusesProtectedBranch() async throws {
         let (repo, git, environment) = try await repo()

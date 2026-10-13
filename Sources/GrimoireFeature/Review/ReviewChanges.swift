@@ -29,7 +29,8 @@ enum ReviewScope: String, CaseIterable, Sendable {
 enum ReviewChanges {
     /// The files the agent edited, from its own Edit / Write calls: since your
     /// last message (`.turn`) or in the whole thread. Several edits to one file
-    /// become one card with all their hunks, in order.
+    /// become one card with all their hunks, in order. An edit that names only
+    /// its file (agy's `Update`) is listed with no diff, for `filledFromGit`.
     static func fromEntries(_ entries: [ThreadEntry], scope: ReviewScope, workingDirectory: String) -> [FileChange] {
         let slice: ArraySlice<ThreadEntry>
         if scope == .turn, let lastUser = entries.lastIndex(where: { if case .user = $0 { true } else { false } }) {
@@ -40,6 +41,8 @@ enum ReviewChanges {
         var order: [String] = []
         var hunks: [String: [AinkradDiffHunk]] = [:]
         var statuses: [String: FileChange.Status] = [:]
+        /// Files only an `Update` touched: their diff comes from git.
+        var unknown: Set<String> = []
         for entry in slice {
             guard case .tool(let call) = entry, call.result?.isError != true else { continue }
             let edits: [FileChange]
@@ -53,15 +56,21 @@ enum ReviewChanges {
                 edits = [FileChange(path: absolute, status: .added, diff: diff)]
             case "Patch":
                 edits = patchChanges(call.input)
+            case "Update":
+                edits = [FileChange(path: absolute, status: .modified, diff: nil)]
             default:
                 continue
             }
             for edit in edits where !edit.path.isEmpty {
-                guard let diff = edit.diff else { continue }
+                guard edit.diff != nil || call.name == "Update" else { continue }
                 let path = ToolSummary.relative(edit.path, to: workingDirectory)
-                if hunks[path] == nil {
+                if statuses[path] == nil {
                     order.append(path)
                     statuses[path] = edit.status
+                }
+                guard let diff = edit.diff else {
+                    unknown.insert(path)
+                    continue
                 }
                 let offset = hunks[path]?.count ?? 0
                 hunks[path, default: []] += diff.hunks.enumerated().map { index, hunk in
@@ -74,7 +83,20 @@ enum ReviewChanges {
         return order.map { path in
             FileChange(
                 path: path, status: statuses[path] ?? .modified,
-                diff: AinkradFileDiff(path: path, original: "", hunks: hunks[path] ?? []))
+                diff: hunks[path] == nil && unknown.contains(path)
+                    ? nil : AinkradFileDiff(path: path, original: "", hunks: hunks[path] ?? []))
+        }
+    }
+
+    /// Fills the changes `fromEntries` left without a diff from `git diff --relative` of those files
+    /// (GD24: agy's edits carry no strings). That diff is the file's whole uncommitted change, not only
+    /// the agent's part of it; a file git shows no change for gets an empty diff.
+    static func filledFromGit(_ files: [FileChange], diff: String) -> [FileChange] {
+        let fromGit = Dictionary(parseUnifiedDiff(diff).map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first })
+        return files.map { file in
+            guard file.diff == nil else { return file }
+            return fromGit[file.path] ?? FileChange(
+                path: file.path, status: file.status, diff: AinkradFileDiff(path: file.path, original: "", hunks: []))
         }
     }
 

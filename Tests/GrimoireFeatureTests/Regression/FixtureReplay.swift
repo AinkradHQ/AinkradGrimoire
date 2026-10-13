@@ -139,6 +139,9 @@ struct FixtureReplayTests {
         #expect(calls.map(\.name) == ["Bash", "Read", "Update"])
         #expect(calls.allSatisfy { $0.result?.isError == false })
         #expect(calls.last?.input["file_path"]?.stringValue == "/repo/a.txt")
+        // GD24: the update reaches the review pane; its diff comes from git (no strings in agy's stream).
+        let edits = ReviewChanges.fromEntries(live.entries, scope: .thread, workingDirectory: "/repo")
+        #expect(edits == [FileChange(path: "a.txt", status: .modified, diff: nil)])
         #expect(live.entries.last == .text("Ran `ls` and updated [a.txt](file:///repo/a.txt) to say \"bye\".\n"))
     }
 }
