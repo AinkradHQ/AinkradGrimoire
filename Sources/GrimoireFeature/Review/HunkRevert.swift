@@ -50,7 +50,12 @@ enum HunkRevert {
                     refused.append(file.path)
                     continue
                 }
-                // In place, not atomically: keeps the file's permissions and any symlink to it.
+                // Re-read right before writing: an edit landing since the read is never overwritten (GD36). In place,
+                // not atomically: keeps the file's permissions and any symlink to it.
+                guard (try? Data(contentsOf: url)) == data else {
+                    refused.append(file.path)
+                    continue
+                }
                 do { try Data(reverted.utf8).write(to: url) } catch { refused.append(file.path) }
             }
             return refused

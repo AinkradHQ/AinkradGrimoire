@@ -77,6 +77,8 @@ final class ReviewModel {
     func addComment(_ text: String, on path: String, line: Int? = nil, quote: String = "") {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        // A CRLF file's line keeps its "\r" for Revert (GD33); the quote the agent reads doesn't.
+        let quote = quote.hasSuffix("\r") ? String(quote.dropLast()) : quote
         live.reviewComments.append(ReviewComment(path: path, line: line, quote: quote, text: text))
     }
 
@@ -86,9 +88,13 @@ final class ReviewModel {
         live.send("")
     }
 
+    /// Hunks and files can be reverted only between turns: mid-turn the agent may be editing those very files (GD36).
+    var canRevertNow: Bool { !live.canInterrupt }
+
     /// Reverts the ticked hunks in the working tree. A file whose hunks can't be placed exactly (it changed since)
     /// is left untouched and named in the error.
     func revertSelected() async {
+        guard canRevertNow else { return }
         let chosen = files.compactMap { file -> (path: String, hunks: [AinkradDiffHunk])? in
             let hunks = file.diff?.hunks.filter { selectedHunks.contains(HunkKey(path: file.path, hunk: $0.id)) } ?? []
             return hunks.isEmpty ? nil : (file.path, hunks)
@@ -121,6 +127,7 @@ final class ReviewModel {
 
     /// Discards a file's uncommitted changes (tracked files only).
     func revert(_ file: FileChange) async {
+        guard canRevertNow else { return }
         await perform(["restore", "--staged", "--worktree", "--", file.path])
     }
 

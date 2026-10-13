@@ -29,8 +29,12 @@ extension GrimoireModel {
         guard !text.isEmpty else { return }
         live.cancelSendAtReset()
         live.draft = ""
+        // The composer's images go along when the other agent takes images (GD30).
+        let images = harness.acceptsImages ? live.attachments : []
+        if !images.isEmpty { live.attachments = [] }
         startThread(
-            project: thread.projectPath, prompt: text, model: nil, mode: live.mode, worktree: false, harness: harness)
+            project: thread.projectPath, prompt: text, model: nil, mode: live.mode, worktree: false, harness: harness,
+            images: images)
     }
 
     /// What the transcript lists while `live` starts.

@@ -98,14 +98,7 @@ struct ThreadFooter: View {
         }
     }
 
-    private func send() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        live.draft = ""
-        let attachments = live.attachments
-        live.attachments = []
-        live.send(text, images: attachments.map(\.image), imageNames: attachments.map(\.name))
-    }
+    private func send() { _ = live.sendDraft() }
 
     private func limitBar(_ limit: UsageLimit) -> some View {
         let alternative = model.alternative(to: harness)

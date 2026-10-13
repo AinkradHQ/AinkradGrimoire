@@ -44,6 +44,7 @@ struct ReviewPane: View {
                             FileCard(
                                 file: file, comments: review.comments.filter { $0.path == file.path }.map(\.text),
                                 canRevert: review.scope == .uncommitted && file.status != .untracked,
+                                isBetweenTurns: review.canRevertNow,
                                 startsExpanded: review.files.count <= 3, selection: selection(in: file),
                                 onRevert: { reverting = file },
                                 onComment: { review.addComment($0, on: file.path, line: $1, quote: $2) })
@@ -130,8 +131,10 @@ struct ReviewPane: View {
                 HStack(spacing: skin.size.s8) {
                     AinkradButton(title: "Revert selected", style: .secondary) { isRevertingHunks = true }
                         .secondaryAccent().fullWidth()
-                        .disabled(review.selectedHunks.isEmpty)
-                        .help("Tick hunks to revert them")
+                        .disabled(review.selectedHunks.isEmpty || !review.canRevertNow)
+                        .help(
+                            review.canRevertNow
+                                ? "Tick hunks to revert them" : "Waits for the agent's turn to end — it may be editing these files")
                     if let forge, review.comments.isEmpty {
                         AinkradButton(title: "Review in Forge ↗", style: .secondary, action: forge)
                             .secondaryAccent().fullWidth()
@@ -163,6 +166,8 @@ private struct FileCard: View {
     /// Comments queued on this file, not sent yet.
     let comments: [String]
     let canRevert: Bool
+    /// False mid-turn: the agent may be editing the file, so its Revert waits (GD36).
+    let isBetweenTurns: Bool
     let selection: (AinkradDiffHunk) -> Binding<Bool>
     let onRevert: () -> Void
     /// A comment's text, its line (nil when the file's numbers aren't known) and the line quoted.
@@ -180,7 +185,7 @@ private struct FileCard: View {
     @State private var hovering = false
 
     init(
-        file: FileChange, comments: [String], canRevert: Bool, startsExpanded: Bool,
+        file: FileChange, comments: [String], canRevert: Bool, isBetweenTurns: Bool = true, startsExpanded: Bool,
         selection: @escaping (AinkradDiffHunk) -> Binding<Bool>, onRevert: @escaping () -> Void,
         onComment: @escaping (String, Int?, String) -> Void
     ) {
@@ -188,6 +193,7 @@ private struct FileCard: View {
         self.file = file
         self.comments = comments
         self.canRevert = canRevert
+        self.isBetweenTurns = isBetweenTurns
         self.onRevert = onRevert
         self.onComment = onComment
         _isExpanded = State(initialValue: startsExpanded)
@@ -219,13 +225,26 @@ private struct FileCard: View {
                 ForgeHeaderPill(isHovered: hovering, action: openInForge)
                 if canRevert {
                     AinkradIconButton(
-                        systemName: "arrow.uturn.backward", size: skin.size.s22, tooltip: "Revert this file",
-                        action: onRevert)
+                        systemName: "arrow.uturn.backward", size: skin.size.s22,
+                        tooltip: isBetweenTurns
+                            ? "Revert this file" : "Waits for the agent's turn to end — it may be editing this file",
+                        action: onRevert
+                    )
+                    .disabled(!isBetweenTurns)
                 }
             }
             .contentShape(Rectangle())
             .onTapGesture { isExpanded.toggle() }
             .onHover { hovering = $0 }
+            // The keyboard's fold (GD35): Tab reaches the header with keyboard navigation on; Space or ↵ folds.
+            .focusable(interactions: .activate)
+            .onKeyPress(keys: [.space, .return]) { _ in
+                isExpanded.toggle()
+                return .handled
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { isExpanded.toggle() }
+            .accessibilityHint(isExpanded ? "Folds the file" : "Unfolds the file")
 
             if isExpanded {
                 if let diff = file.diff, !diff.hunks.isEmpty {

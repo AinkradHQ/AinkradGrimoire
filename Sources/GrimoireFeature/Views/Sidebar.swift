@@ -227,7 +227,7 @@ private struct ProjectRow: View {
 
 /// Cyan pulse while working, amber when it needs you, red after a failure;
 /// an empty slot keeps titles aligned.
-private struct StatusDot: View {
+struct StatusDot: View {
     let status: LiveThread.Status?
     /// Its agent's usage limit stopped it: amber until the reset.
     var isLimited = false

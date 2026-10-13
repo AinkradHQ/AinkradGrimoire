@@ -7,26 +7,32 @@ import SwiftUI
 /// mode and model can still be changed in the composer's strip.
 struct ForgeAskView: View {
     let model: GrimoireModel
-    @State private var project: String
-    @State private var harness: Harness
-    @State private var mode: PermissionMode
-    /// Claude's model alias; `otherModel` for the other agents (nil is their default).
-    @State private var agentModel: String
-    @State private var otherModel: String?
-    @State private var prompt: String
-    @State private var context: AskContext?
+    /// The ask as it arrived; the edits are written to `model.forgeAsk` (GD31).
+    let arrived: ForgeAsk
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradTypography) private var typography
 
     init(model: GrimoireModel, ask: ForgeAsk) {
         self.model = model
-        _project = State(initialValue: ask.project)
-        _harness = State(initialValue: NewThreadSheet.installed(model).first ?? .claude)
-        _mode = State(initialValue: model.settings.defaultMode)
-        _agentModel = State(initialValue: model.settings.defaultModel)
-        _prompt = State(initialValue: ask.prompt)
-        _context = State(initialValue: ask.context)
+        self.arrived = ask
+    }
+
+    private var ask: ForgeAsk { model.forgeAsk ?? arrived }
+    private func edit(_ change: (inout ForgeAsk) -> Void) {
+        guard var ask = model.forgeAsk else { return }
+        change(&ask)
+        model.forgeAsk = ask
+    }
+    private var project: String { ask.project }
+    private var harness: Harness { ask.harness ?? NewThreadSheet.installed(model).first ?? .claude }
+    private var mode: PermissionMode { ask.mode ?? model.settings.defaultMode }
+    /// Claude's model alias; `otherModel` for the other agents (nil is their default).
+    private var agentModel: String { ask.agentModel ?? model.settings.defaultModel }
+    private var otherModel: String? { ask.otherModel }
+    private var context: AskContext? { ask.context }
+    private var prompt: Binding<String> {
+        Binding(get: { ask.request }, set: { text in edit { $0.request = text } })
     }
 
     var body: some View {
@@ -94,7 +100,7 @@ struct ForgeAskView: View {
 
     private var composer: some View {
         AinkradComposer(
-            text: $prompt, placeholder: "What should \(harness.displayName) do? (@ for files)", isEditable: true,
+            text: prompt, placeholder: "What should \(harness.displayName) do? (@ for files)", isEditable: true,
             canSend: canSend, autoFocus: true, suggestions: suggestions, onPick: { _, _ in }, onDrop: nil, onSend: send
         ) {
             if let context { selection(context) }
@@ -119,8 +125,10 @@ struct ForgeAskView: View {
         AinkradMenuButton(
             items: NewThreadSheet.installed(model).map { choice in
                 AinkradMenuItem(title: choice.displayName, systemName: choice == harness ? "checkmark" : nil) {
-                    harness = choice
-                    otherModel = nil
+                    edit {
+                        $0.harness = choice
+                        $0.otherModel = nil
+                    }
                 }
             }
         ) {
@@ -144,7 +152,7 @@ struct ForgeAskView: View {
             ContextChip(
                 context: context,
                 open: { model.openInForge(context.file, line: context.lines.lowerBound, directory: context.project) },
-                remove: { self.context = nil })
+                remove: { edit { $0.context = nil } })
             OutputBlock(text: context.numbered, maxLines: 8)
         }
     }
@@ -153,19 +161,19 @@ struct ForgeAskView: View {
     @ViewBuilder
     private func menus(captions: Bool) -> some View {
         menu("Mode", captions, mode.title, chevron: false, PermissionMode.allCases.map { choice in
-            AinkradMenuItem(title: choice.title, systemName: choice == mode ? "checkmark" : nil) { mode = choice }
+            AinkradMenuItem(title: choice.title, systemName: choice == mode ? "checkmark" : nil) { edit { $0.mode = choice } }
         })
         if harness == .claude {
             menu("Model", captions, agentModel.capitalized, ["opus", "sonnet", "haiku"].map { alias in
                 AinkradMenuItem(title: alias.capitalized, systemName: alias == agentModel ? "checkmark" : nil) {
-                    agentModel = alias
+                    edit { $0.agentModel = alias }
                 }
             })
         } else {
             menu("Model", captions, model.modelName(otherModel, for: harness),
                 ([ModelChoice(id: "", name: "Default")] + (model.models[harness] ?? [])).map { choice in
                     AinkradMenuItem(title: choice.name, systemName: choice.id == (otherModel ?? "") ? "checkmark" : nil) {
-                        otherModel = choice.id.isEmpty ? nil : choice.id
+                        edit { $0.otherModel = choice.id.isEmpty ? nil : choice.id }
                     }
                 })
         }
@@ -189,7 +197,7 @@ struct ForgeAskView: View {
         }
     }
 
-    private var request: String { prompt.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var request: String { ask.request.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSend: Bool { !project.isEmpty && !request.isEmpty }
 
     private func send() {
@@ -197,10 +205,12 @@ struct ForgeAskView: View {
         let worktree =
             harness == .claude && model.settings.worktreeByDefault
             && FileManager.default.fileExists(atPath: (project as NSString).appendingPathComponent(".git"))
-        // Selects the new thread, which clears the ask.
+        let (project, prompt, harness, mode) = (project, context.map { $0.message(request) } ?? request, harness, mode)
+        let agentModel = harness == .claude ? agentModel : otherModel
+        // Sent, not set aside: the ask goes before the new thread is selected (its edits are read above).
+        model.forgeAsk = nil
         model.startThread(
-            project: project, prompt: context.map { $0.message(request) } ?? request,
-            model: harness == .claude ? agentModel : otherModel, mode: mode, worktree: worktree, harness: harness)
+            project: project, prompt: prompt, model: agentModel, mode: mode, worktree: worktree, harness: harness)
     }
 
     private func discard() { model.forgeAsk = nil }

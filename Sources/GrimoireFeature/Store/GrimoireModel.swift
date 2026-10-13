@@ -47,7 +47,7 @@ final class GrimoireModel {
         didSet {
             guard selectedThreadID != oldValue else { return }
             isShowingSettings = false
-            forgeAsk = nil
+            setAsideAsk()
             loadSelectedThread()
         }
     }
@@ -67,6 +67,8 @@ final class GrimoireModel {
     var composerFocusRequest = 0
     /// A request from Forge, waiting in the main pane's inline composer until sent or discarded (see `handleLaunch`).
     var forgeAsk: ForgeAsk?
+    /// An edited ask that opening a thread or a newer ask set aside, until you confirm discarding it (GD31).
+    var setAsideForgeAsk: ForgeAsk?
     /// The review pane beside the conversation; stays open across threads.
     var isReviewOpen = false
     private var reviews: [String: ReviewModel] = [:]
@@ -207,7 +209,7 @@ final class GrimoireModel {
     /// draft; when the CLI names the session the draft takes that id.
     func startThread(
         project: String, prompt: String, model: String?, mode: PermissionMode, worktree: Bool,
-        harness: Harness = .claude
+        harness: Harness = .claude, images: [ImageAttachment] = []
     ) {
         let placeholder = "new-\(UUID().uuidString)"
         // Only Claude Code has a worktree flag.
@@ -227,7 +229,7 @@ final class GrimoireModel {
         draftThreads.insert(draft, at: 0)
         liveThreads[placeholder] = live
         selectedThreadID = placeholder
-        live.send(prompt)
+        live.send(prompt, images: images.map(\.image), imageNames: images.map(\.name))
     }
 
     /// Continues `thread` as a new session with the same history. The fork

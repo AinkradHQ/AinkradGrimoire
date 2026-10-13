@@ -63,10 +63,33 @@ struct AskContext: Hashable {
     }
 }
 
-/// A new thread another app asked for, prefilled in the main pane's composer.
+/// A new thread another app asked for, prefilled in the main pane's composer. Your edits live here, in the model,
+/// so leaving an edited ask can ask first rather than lose them (GD31).
 struct ForgeAsk: Hashable {
     let project: String
     let prompt: String
     /// Forge's selection, when it sent one: the chip and snippet above the field.
     var context: AskContext?
+    /// The field: the request as you've edited it.
+    var request: String
+    /// The composer strip's picks; nil keeps the default (the first installed agent, the settings' mode and model).
+    var harness: Harness?
+    var mode: PermissionMode?
+    var agentModel: String?
+    var otherModel: String?
+    private let sentContext: AskContext?
+
+    init(project: String, prompt: String, context: AskContext? = nil) {
+        self.project = project
+        self.prompt = prompt
+        self.context = context
+        self.request = prompt
+        self.sentContext = context
+    }
+
+    /// Changed since Forge sent it — leaving it then would lose work.
+    var isEdited: Bool {
+        request != prompt || context != sentContext || harness != nil || mode != nil || agentModel != nil
+            || otherModel != nil
+    }
 }

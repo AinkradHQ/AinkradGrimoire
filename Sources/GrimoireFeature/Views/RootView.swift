@@ -23,6 +23,13 @@ struct RootView: View {
         ) {
             NewThreadSheet(model: model) { model.isComposingNewThread = false }
         }
+        // An edited Forge ask set aside by opening a thread or a newer ask (GD31): Cancel brings it back.
+        .ainkradConfirmDialog(
+            isPresented: Binding(get: { model.setAsideForgeAsk != nil }, set: { if !$0 { model.keepEditingAsk() } }),
+            title: "Discard the request from Forge?",
+            message: "You edited it and haven't sent it. Cancel takes you back to it.",
+            confirmTitle: "Discard", isDestructive: true
+        ) { model.setAsideForgeAsk = nil }
         .ainkradToastHost()
         .ainkradHostTheme(theme)
         .task {
@@ -95,7 +102,7 @@ struct MainPane: View {
             if model.isShowingSettings {
                 SettingsView(model: model)
             } else if let ask = model.forgeAsk {
-                ForgeAskView(model: model, ask: ask).id(ask)
+                ForgeAskView(model: model, ask: ask)
             } else {
                 content
             }

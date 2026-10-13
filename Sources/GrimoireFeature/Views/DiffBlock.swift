@@ -20,6 +20,11 @@ struct DiffBlock: View {
     @Environment(\.ainkradStatusColors) private var statusColors
     @Environment(\.ainkradTypography) private var typography
     @Environment(\.forgeOpener) private var opener
+    /// The keyboard's line (GD35): with comments on, the diff is one tab stop; ↑↓ pick a line, ↵ comments on it.
+    @State private var cursor: Int?
+    @FocusState private var isFocused: Bool
+
+    private var places: [(hunk: AinkradDiffHunk, index: Int)] { Self.places(diff) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -43,6 +48,13 @@ struct DiffBlock: View {
                             row(line, number: Self.fileLine(hunk, at: index))
                         }
                     }
+                    .overlay {
+                        if isFocused, let cursor, places.indices.contains(cursor), places[cursor].hunk.id == hunk.id,
+                            places[cursor].index == index
+                        {
+                            Rectangle().stroke(theme.accentSecondary.opacity(skin.opacity.o80), lineWidth: 1)
+                        }
+                    }
                     .contentShape(Rectangle())
                     .simultaneousGesture(
                         TapGesture().onEnded {
@@ -58,6 +70,22 @@ struct DiffBlock: View {
         .padding(.horizontal, skin.size.s8)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(skin.shape(cut: AinkradRadius.sm).fill(theme.background.opacity(skin.opacity.o70)))
+        // Keyboard focus only (clicks still select text and open comments as before).
+        .focusable(onLineTap != nil, interactions: .activate)
+        .focused($isFocused)
+        .onChange(of: isFocused) { _, focused in
+            if focused, cursor == nil { cursor = Self.firstChange(places) }
+        }
+        .onMoveCommand { direction in
+            guard let cursor else { return }
+            self.cursor = Self.move(cursor, direction, count: places.count)
+        }
+        .onKeyPress(keys: [.return, .space]) { _ in
+            guard let onLineTap, let cursor, places.indices.contains(cursor) else { return .ignored }
+            onLineTap(places[cursor].hunk, places[cursor].index)
+            return .handled
+        }
+        .accessibilityHint(onLineTap == nil ? "" : "Up and down pick a line; Return comments on it")
     }
 
     private func row(_ line: AinkradDiffLine, number: Int) -> some View {
@@ -76,7 +104,9 @@ struct DiffBlock: View {
                     .accessibilityHidden(true)
             }
             Text("\(sign) ")
-            Text(line.text).fixedSize(horizontal: false, vertical: true)
+            // A CRLF file's line keeps its "\r" for Revert (GD33); it isn't drawn.
+            Text(line.text.hasSuffix("\r") ? String(line.text.dropLast()) : line.text)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(color)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -134,6 +164,24 @@ extension AinkradFileDiff {
 }
 
 extension DiffBlock {
+    /// Every line as (hunk, index), top to bottom — what the keyboard's ↑↓ walk (GD35).
+    static func places(_ diff: AinkradFileDiff) -> [(hunk: AinkradDiffHunk, index: Int)] {
+        diff.hunks.flatMap { hunk in hunk.lines.indices.map { (hunk, $0) } }
+    }
+
+    /// Where the keyboard's line starts: the first added or removed line.
+    static func firstChange(_ places: [(hunk: AinkradDiffHunk, index: Int)]) -> Int {
+        places.firstIndex { $0.hunk.lines[$0.index].kind != .context } ?? 0
+    }
+
+    /// ↑↓ from `cursor`, kept on the diff's `count` lines.
+    static func move(_ cursor: Int, _ direction: MoveCommandDirection, count: Int) -> Int {
+        switch direction {
+        case .up: max(cursor - 1, 0)
+        case .down: min(cursor + 1, max(count - 1, 0))
+        default: cursor
+        }
+    }
 
     /// Hunk line `index`'s line in the file: the new side's, or the old side's for a removed line.
     static func fileLine(_ hunk: AinkradDiffHunk, at index: Int) -> Int {

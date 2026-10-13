@@ -19,8 +19,14 @@ struct ThreadView: View {
             if let review {
                 // Without Forge there is nothing to review in (the host says so; an older host doesn't).
                 let forge: (() -> Void)? = model.apps?.appAvailability(appID: ForgeLink.appID) == false ? nil : { model.reviewInForge(thread) }
-                ReviewPane(review: review, fills: reviewReplacesThread, reviewInForge: forge) {
-                    model.isReviewOpen = false
+                VStack(spacing: 0) {
+                    ReviewPane(review: review, fills: reviewReplacesThread, reviewInForge: forge) {
+                        model.isReviewOpen = false
+                    }
+                    // Standing in for the thread, the pane docks its approval where the thread's footer would (GD34).
+                    if reviewReplacesThread, let live = model.current, let request = live.pendingApproval {
+                        ApprovalBar(request: request, workingDirectory: thread.workingDirectory, live: live)
+                    }
                 }
             }
         }

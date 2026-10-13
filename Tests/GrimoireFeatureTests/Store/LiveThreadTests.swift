@@ -14,9 +14,17 @@ final class FakeEngine: HarnessEngine {
     private(set) var interrupts = 0
     private(set) var modes: [PermissionMode] = []
     private(set) var efforts: [String] = []
+    /// Set to make `send` throw, as a dead pipe does.
+    var sendError: (any Error)?
+    /// Set to make `start` throw, as a missing binary does.
+    var startError: (any Error)?
 
-    func start(_ options: EngineStartOptions) throws { started = options }
+    func start(_ options: EngineStartOptions) throws {
+        if let startError { throw startError }
+        started = options
+    }
     func send(_ text: String, images: [EngineImage]) throws {
+        if let sendError { throw sendError }
         sent.append(text)
         self.images.append(images)
     }
