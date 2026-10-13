@@ -54,6 +54,17 @@ struct ClaudeSessionsTests {
         #expect(summarize([Line.command("/clear"), Line.sdk("add a test"), Line.assistant("ok")])?.title == "add a test")
     }
 
+    @Test("a long title is cut at a word boundary with an ellipsis (GD22)")
+    func longTitles() {
+        #expect(ClaudeSessionSummary.title("short") == "short")
+        let words = String(repeating: "word ", count: 20) + "end"  // 103 characters
+        #expect(ClaudeSessionSummary.title(words) == String(repeating: "word ", count: 16).dropLast() + "…")
+        let exact = String(repeating: "a", count: 80) + " tail"
+        #expect(ClaudeSessionSummary.title(exact) == String(repeating: "a", count: 80) + "…", "the space after 80 fits")
+        let unbroken = String(repeating: "x", count: 100)
+        #expect(ClaudeSessionSummary.title(unbroken) == String(repeating: "x", count: 80) + "…")
+    }
+
     @Test("working directory, branch and the latest model come from the file")
     func fields() {
         let summary = summarize([

@@ -54,6 +54,19 @@ public struct ClaudeSessionSummary: Sendable, Equatable, Identifiable {
     public var gitBranch: String?
     public var model: String?
     public var lastActivity: Date
+
+    static let titleLimit = 80
+
+    /// `text` as a row title: whole when short, else cut at the last word that fits, with "…" (GD22).
+    static func title(_ text: String) -> String {
+        guard text.count > titleLimit else { return text }
+        let window = text.prefix(titleLimit + 1)
+        let cut =
+            window.lastIndex(where: \.isWhitespace).flatMap { space in
+                window.distance(from: window.startIndex, to: space) >= titleLimit / 2 ? window[..<space] : nil
+            } ?? window.prefix(titleLimit)
+        return cut.trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+    }
 }
 
 /// A working directory with its sessions, newest first.
@@ -155,7 +168,7 @@ public enum ClaudeSessions {
                 branch = parse(chunk)?["gitBranch"]?.stringValue
             }
         }
-        let title = customTitle ?? aiTitle ?? firstPrompt.map { String($0.prefix(80)) } ?? "Untitled"
+        let title = customTitle ?? aiTitle ?? firstPrompt.map(ClaudeSessionSummary.title) ?? "Untitled"
         let (projectPath, worktree) = splitWorktree(workingDirectory)
         return ClaudeSessionSummary(
             id: id, fileURL: fileURL, workingDirectory: workingDirectory, projectPath: projectPath, worktree: worktree,

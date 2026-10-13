@@ -205,7 +205,7 @@ final class GrimoireModel {
         let worktreeName = worktree && harness == .claude ? Self.worktreeName(for: prompt) : nil
         let draft = ClaudeSessionSummary(
             id: placeholder, harness: harness, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: project,
-            projectPath: project, worktree: worktreeName, title: String(prompt.prefix(80)), model: model,
+            projectPath: project, worktree: worktreeName, title: ClaudeSessionSummary.title(prompt), model: model,
             lastActivity: Date())
         let live = makeLive(
             harness: harness,
