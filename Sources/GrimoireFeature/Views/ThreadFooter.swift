@@ -67,17 +67,19 @@ struct ThreadFooter: View {
                 }
             }
             .paletteSuggestionRows()
-            // Busy (mockup 1): the red outline "■ Stop", and Send's ↑ becomes ↵, which queues the next message.
-            // The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
+            // Busy (mockup 1): the red "■ Stop" on its faint red fill, and Send's ↑ becomes a lit ↵, which queues
+            // the next message. The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
             .stopButton("■ Stop", action: isBusy ? { live.interrupt() } : nil)
+            .tintedStopButton()
             .sendGlyph(isBusy ? "↵" : "↑")
+            .sendStaysLit(when: isBusy)
+            // Waiting on the limit's reset, only the field steps back; the strip and Send stay lit (mockup 12 D).
+            .textFieldDimmed(limit != nil)
             .background {
                 if harness.acceptsImages { PasteImageMonitor { Attach.paste($0, into: live) } }
             }
             // ⌘L: a fresh editor autofocuses — the kit's composer has no other focus hook. The draft is kept.
             .id(model.composerFocusRequest)
-            // Waiting on the limit's reset, the composer steps back (mockup 12 D).
-            .opacity(limit != nil ? skin.opacity.o60 : 1)
             .padding(.horizontal, skin.size.s14)
             .padding(.bottom, skin.size.s14)
         }
@@ -237,6 +239,11 @@ struct MenuValue: View {
 
 /// The approval the agent is waiting on, docked above the composer. "Deny…" asks for an optional reason the agent
 /// sees (mockup 4); ⌘⌫ still denies at once.
+extension AinkradComposer {
+    /// `sendStaysLit()` only while `lit` — idle, an empty draft's ↑ still reads as disabled.
+    fileprivate func sendStaysLit(when lit: Bool) -> Self { lit ? sendStaysLit() : self }
+}
+
 struct ApprovalBar: View {
     let request: ApprovalRequest
     let workingDirectory: String
