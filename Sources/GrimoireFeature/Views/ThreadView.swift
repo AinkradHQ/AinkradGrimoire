@@ -313,13 +313,20 @@ private struct ToolCard: View {
         .overlay(skin.shape(cut: AinkradRadius.md).stroke(stroke, lineWidth: 1))
     }
 
+    /// The expander, then "↗ Forge" beside it rather than inside it, so each is its own keyboard stop (GD28).
     private var header: some View {
-        Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
-            isExpanded.toggle()
-        } label: {
-            headerLabel
+        HStack(spacing: skin.size.s8) {
+            Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
+                isExpanded.toggle()
+            } label: {
+                headerLabel
+            }
+            .buttonStyle(.plain)
+            ForgeHeaderPill(isHovered: hovering, action: ForgeTarget.action(for: call, opener: opener))
+            resultLabel
+                .contentShape(Rectangle())
+                .onTapGesture { isExpanded.toggle() }
         }
-        .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : skin.animation(skin.motion.hover), value: hovering)
     }
@@ -337,11 +344,12 @@ private struct ToolCard: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: skin.size.s8)
-            ForgeHeaderPill(isHovered: hovering, action: ForgeTarget.action(for: call, opener: opener))
-            Text(
-                isWaiting
-                    ? "waiting for you" : ToolSummary.result(name: call.name, input: call.input, output: call.result)
-            )
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var resultLabel: some View {
+        Text(isWaiting ? "waiting for you" : ToolSummary.result(name: call.name, input: call.input, output: call.result))
             .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
             .foregroundStyle(
                 isWaiting
@@ -349,8 +357,6 @@ private struct ToolCard: View {
                     : call.result?.isError == true ? statusColors.danger : skin.color(skin.text.faint)
             )
             .lineLimit(1)
-        }
-        .contentShape(Rectangle())
     }
 
     private var detail: AnyView? {
