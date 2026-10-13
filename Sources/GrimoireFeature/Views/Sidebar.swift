@@ -7,6 +7,7 @@ struct Sidebar: View {
     @Bindable var model: GrimoireModel
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
+    @FocusState private var isSearchFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: AinkradSpacing.sm) {
@@ -29,7 +30,9 @@ struct Sidebar: View {
                     .fixedSize()
             }
 
-            AinkradSearchField(text: $model.searchText, placeholder: "Search threads")
+            AinkradSearchField(text: $model.searchText, placeholder: "Search threads", focus: $isSearchFocused)
+                // ⌘F. A turn later: focus set in the same update as the key event doesn't stick.
+                .onChange(of: model.searchFocusRequest) { DispatchQueue.main.async { isSearchFocused = true } }
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: skin.size.s1) {
@@ -56,8 +59,7 @@ struct Sidebar: View {
 
     @ViewBuilder
     private func projectSection(_ project: ClaudeProject) -> some View {
-        let expanded =
-            !model.searchText.isEmpty || model.settings.isExpanded(project.path, mostRecent: model.mostRecentProject)
+        let expanded = model.isExpanded(project)
         ProjectRow(project: project, isExpanded: expanded) {
             model.settings.toggle(project.path, mostRecent: model.mostRecentProject)
         }
@@ -116,6 +118,16 @@ private struct ProjectRow: View {
     @Environment(\.ainkradTheme) private var theme
 
     var body: some View {
+        // A plain button, so Full Keyboard Access can focus it and Space toggles it.
+        Button(action: toggle) {  // design-lint: allow raw-control keyboard-reachable row (kit has no row button)
+            label
+        }
+        .buttonStyle(.plain)
+        .help(project.path)
+        .padding(.top, skin.size.s4)
+    }
+
+    private var label: some View {
         HStack(spacing: skin.size.s8) {
             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                 .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
@@ -135,9 +147,6 @@ private struct ProjectRow: View {
         .ainkradRowBackground(isSelected: false, isHovered: isHovered)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .onTapGesture(perform: toggle)
-        .help(project.path)
-        .padding(.top, skin.size.s4)
     }
 }
 
@@ -190,6 +199,14 @@ private struct ThreadRow: View {
     @Environment(\.ainkradTheme) private var theme
 
     var body: some View {
+        Button(action: select) {  // design-lint: allow raw-control keyboard-reachable row (kit has no row button)
+            label
+        }
+        .buttonStyle(.plain)
+        .help(thread.gitBranch.map { "\(thread.title) — \($0)" } ?? thread.title)
+    }
+
+    private var label: some View {
         VStack(alignment: .leading, spacing: skin.size.s3) {
             HStack(spacing: skin.size.s8) {
                 StatusDot(status: status)
@@ -224,8 +241,6 @@ private struct ThreadRow: View {
         .ainkradRowBackground(isSelected: isSelected, isHovered: isHovered)
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
-        .onTapGesture(perform: select)
-        .help(thread.gitBranch.map { "\(thread.title) — \($0)" } ?? thread.title)
     }
 }
 
@@ -236,6 +251,14 @@ private struct ShowAllRow: View {
     @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
+        Button(action: action) {  // design-lint: allow raw-control keyboard-reachable row (kit has no row button)
+            label
+        }
+        .buttonStyle(.plain)
+        .padding(.top, skin.size.s4)
+    }
+
+    private var label: some View {
         Text("Show all \(count) projects…")
             .font(skin.font(AinkradFontToken(sizeKey: "t12")))
             .foregroundStyle(skin.color(skin.text.muted))
@@ -245,8 +268,6 @@ private struct ShowAllRow: View {
             .ainkradRowBackground(isSelected: false, isHovered: isHovered)
             .contentShape(Rectangle())
             .onHover { isHovered = $0 }
-            .onTapGesture(perform: action)
-            .padding(.top, skin.size.s4)
     }
 }
 

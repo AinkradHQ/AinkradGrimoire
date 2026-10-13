@@ -17,6 +17,8 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.tokens.background)
         .foregroundStyle(theme.tokens.foreground)
+        // Off while the New Thread sheet is up, so ⌘F/⌘L and thread keys don't act behind it.
+        .overlay { if !model.isComposingNewThread { ShortcutLayer(model: model) } }
         .ainkradModal(
             isPresented: Binding(get: { model.isComposingNewThread }, set: { model.isComposingNewThread = $0 }),
             contentWidth: NewThreadSheet.width
@@ -31,6 +33,49 @@ struct RootView: View {
             model.start()
             model.handleLaunch(takeLaunch())
         }
+    }
+}
+
+/// Grimoire's keyboard shortcuts (GD17). Zero-sized key-equivalent claims, not controls — a plugin has no menu
+/// bar. Only available commands are mounted: a mounted chord is claimed even when it would do nothing, and
+/// would take the key from the composer (where ⌘⌫ deletes to the start of the line).
+private struct ShortcutLayer: View {
+    let model: GrimoireModel
+
+    var body: some View {
+        ZStack {
+            claim("New thread", "n") { if !model.projects.isEmpty { model.isComposingNewThread = true } }
+            claim("Search threads", "f") { model.searchFocusRequest += 1 }
+            claim("Focus composer", "l") { model.composerFocusRequest += 1 }
+            claim("Next thread", "]", [.command, .shift]) { model.selectAdjacentThread(1) }
+            claim("Previous thread", "[", [.command, .shift]) { model.selectAdjacentThread(-1) }
+            if model.selectedThread != nil {
+                claim("Review changes", "r", [.command, .shift]) { model.isReviewOpen.toggle() }
+            }
+            // Only for the thread on screen: never answer an approval you can't see.
+            if let live = model.current, model.selectedThread != nil, !model.isShowingSettings {
+                if live.pendingApproval != nil {
+                    claim("Allow once", .return) { live.answer(.allow) }
+                    if live.canAllowAlways {
+                        claim("Always allow", .return, [.command, .option]) { live.answer(.allowAlways) }
+                    }
+                    claim("Deny", .delete) { live.answer(.deny(reason: "Denied in Grimoire.")) }
+                }
+                if live.canInterrupt {
+                    claim("Stop", ".") { live.interrupt() }
+                }
+            }
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
+
+    private func claim(
+        _ title: String, _ key: KeyEquivalent, _ modifiers: EventModifiers = .command, action: @escaping () -> Void
+    ) -> some View {
+        Button(title, action: action)  // design-lint: allow raw-control key-equivalent claim
+            .keyboardShortcut(key, modifiers: modifiers)
     }
 }
 
