@@ -186,6 +186,8 @@ struct FailureCard: View {
 struct LimitBar: View {
     let limit: UsageLimit
     let now: () -> Date
+    /// The account's plan ("Max"), when the agent's config names it.
+    var plan: String?
     /// `nil` when the reset time isn't known or the message is already queued.
     let sendAtReset: (() -> Void)?
     let alternative: Harness?
@@ -254,9 +256,9 @@ struct LimitBar: View {
         }
     }
 
-    /// "Resets at **15:00** — in 1 h 12 min · 5-hour window", the time bold (12 D). No plan name: none is reported.
+    /// "Resets at **15:00** — in 1 h 12 min · Max plan · 5-hour window", the time bold (12 D); the plan when known.
     private func detail(now: Date) -> Text {
-        let window = limit.window.map { " · \($0) window" } ?? ""
+        let window = (plan.map { " · \($0) plan" } ?? "") + (limit.window.map { " · \($0) window" } ?? "")
         guard let reset = limit.resetsAt else { return Text("Reset time not reported" + window) }
         let time = Text(UsageLimit.clock(reset)).fontWeight(.bold).foregroundStyle(theme.foreground)
         return Text("Resets at ") + time + Text(" — \(UsageLimit.countdown(to: reset, now: now))" + window)

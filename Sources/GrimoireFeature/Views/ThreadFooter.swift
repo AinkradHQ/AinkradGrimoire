@@ -112,7 +112,7 @@ struct ThreadFooter: View {
         let canQueue =
             limit.resetsAt != nil && live.sendAt == nil && !draft.trimmingCharacters(in: .whitespaces).isEmpty
         return LimitBar(
-            limit: limit, now: model.now,
+            limit: limit, now: model.now, plan: harness == .claude ? model.claudePlan : nil,
             sendAtReset: canQueue ? { limit.resetsAt.map(live.sendAtReset) } : nil,
             alternative: alternative,
             carryOver: {
