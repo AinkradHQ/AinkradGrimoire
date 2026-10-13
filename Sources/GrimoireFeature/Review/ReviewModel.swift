@@ -77,6 +77,8 @@ final class ReviewModel {
     func addComment(_ text: String, on path: String, line: Int? = nil, quote: String = "") {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        // A CRLF file's line keeps its "\r" for Revert (GD33); the quote the agent reads doesn't.
+        let quote = quote.hasSuffix("\r") ? String(quote.dropLast()) : quote
         live.reviewComments.append(ReviewComment(path: path, line: line, quote: quote, text: text))
     }
 

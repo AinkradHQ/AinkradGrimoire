@@ -131,6 +131,11 @@ struct ReviewChangesTests {
         review.addComment("rename", on: "B.swift")
         review.sendComments()
         #expect(engine.sent.last == "Review comments on your changes:\n- B.swift\n  rename")
+        // A CRLF file's line is quoted without its "\r".
+        review.addComment("why?", on: "C.txt", line: 2, quote: "row two\r")
+        #expect(review.comments.first?.quote == "row two")
+        review.sendComments()
+        #expect(engine.sent.last == "Review comments on your changes:\n- C.txt:2\n  > row two\n  why?")
     }
 }
 
