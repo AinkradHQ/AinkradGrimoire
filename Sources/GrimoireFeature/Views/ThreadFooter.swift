@@ -38,28 +38,17 @@ struct ThreadFooter: View {
             ) {
                 AttachmentChips(live: live)
             } leading: {
-                // The captions go first when the thread is squeezed (GD10).
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: skin.spacing.sm) {
-                        modeMenu(captions: true)
-                        modelMenu(captions: true)
-                        EffortMenu(live: live, harness: harness, captions: true)
-                    }
-                    HStack(spacing: skin.spacing.sm) {
-                        modeMenu(captions: false)
-                        modelMenu(captions: false)
-                        EffortMenu(live: live, harness: harness, captions: false)
-                    }
-                    HStack(spacing: skin.spacing.sm) {
-                        modeMenu(captions: false)
-                        modelMenu(captions: false)
-                    }
+                // Waiting on the limit's reset, the strip keeps only Mode (mockup 12 D).
+                if limit != nil {
+                    modeMenu(captions: true)
+                } else {
+                    strip
                 }
             } trailing: {
                 if let at = live.sendAt {
                     queued(at)
                 }
-                if harness.acceptsImages {
+                if harness.acceptsImages, limit == nil {
                     AinkradIconButton(
                         systemName: "paperclip", size: AinkradComposer<EmptyView, EmptyView, EmptyView>.controlHeight,
                         tooltip: "Attach images (or drop or paste them)"
@@ -87,6 +76,26 @@ struct ThreadFooter: View {
         // the CLI's own commands by the time you look.
         .onChange(of: live.draft) { _, text in if !text.isEmpty { live.ensureStarted() } }
         .animation(reduceMotion ? nil : skin.animation(skin.motion.present), value: limit)
+    }
+
+    /// Mode, Model and Effort; the captions go first when the thread is squeezed (GD10).
+    private var strip: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: skin.spacing.sm) {
+                modeMenu(captions: true)
+                modelMenu(captions: true)
+                EffortMenu(live: live, harness: harness, captions: true)
+            }
+            HStack(spacing: skin.spacing.sm) {
+                modeMenu(captions: false)
+                modelMenu(captions: false)
+                EffortMenu(live: live, harness: harness, captions: false)
+            }
+            HStack(spacing: skin.spacing.sm) {
+                modeMenu(captions: false)
+                modelMenu(captions: false)
+            }
+        }
     }
 
     private func send() {
