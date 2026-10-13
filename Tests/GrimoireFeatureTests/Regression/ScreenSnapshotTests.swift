@@ -120,6 +120,8 @@ final class ScreenSnapshotTests: XCTestCase {
             sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())")
         )
         model.engineOverride = { FakeEngine() }
+        // Frozen: the status line's "Done in …" and the cards' durations come from this clock.
+        model.now = { Date(timeIntervalSince1970: 1_791_700_000) }
         model.startThread(
             project: harness == .claude ? "/tmp/work" : "/repo", prompt: turn.prompt, model: nil, mode: .ask,
             worktree: false, harness: harness)
