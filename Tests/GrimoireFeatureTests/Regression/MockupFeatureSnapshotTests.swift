@@ -23,6 +23,21 @@ final class MockupFeatureSnapshotTests: XCTestCase {
             }, named: "approval-deny", size: CGSize(width: 820, height: 170))
     }
 
+    /// Deny… puts the caret in the reason field: typing goes straight to the agent's reason.
+    func testDenyReasonFieldTakesFocus() {
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { FakeEngine() })
+        let request = ApprovalRequest(
+            id: "r1", toolUseID: "t1", toolName: "Bash", input: ["command": "git push"], summary: "", suggestions: [])
+        let (window, _) = Snapshot.host(
+            ApprovalBar(request: request, workingDirectory: "/repo", live: live, isDenying: true),
+            size: CGSize(width: 820, height: 120))
+        defer { window.close() }
+        let editor = window.firstResponder as? NSTextView
+        XCTAssertTrue(editor?.isFieldEditor == true, "focus is on \(String(describing: window.firstResponder))")
+    }
+
     /// GP15 (mockup 2): an Edit card numbers its lines where they sit in the file, hunk header included.
     func testEditCardShowsFileLineNumbers() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-edit-\(UUID())")

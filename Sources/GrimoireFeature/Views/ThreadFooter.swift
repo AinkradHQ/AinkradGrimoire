@@ -244,6 +244,7 @@ struct ApprovalBar: View {
     /// Internal so a snapshot can show the reason field open.
     @State var isDenying = false
     @State private var reason = ""
+    @FocusState private var reasonFocused: Bool
     @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
@@ -258,12 +259,15 @@ struct ApprovalBar: View {
             .labelCasedCaption()
             .iconGlyph("⌁")
             if isDenying {
-                AinkradTextField(text: $reason, placeholder: "Reason for the agent (optional) — ↵ denies")
-                    .onSubmit(deny)
-                    .focusOnAppear()
-                    .padding(.horizontal, skin.size.s14)
-                    .padding(.bottom, skin.spacing.xs)
-                    .transition(.opacity)
+                AinkradTextField(
+                    text: $reason, placeholder: "Reason for the agent (optional) — ↵ denies", focus: $reasonFocused
+                )
+                .onSubmit(deny)
+                // A turn later: focus set in the same update as the click doesn't stick.
+                .onAppear { DispatchQueue.main.async { reasonFocused = true } }
+                .padding(.horizontal, skin.size.s14)
+                .padding(.bottom, skin.spacing.xs)
+                .transition(.opacity)
             }
         }
         .id(request.id)

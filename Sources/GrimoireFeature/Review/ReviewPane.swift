@@ -171,6 +171,7 @@ private struct FileCard: View {
     @State private var comment = ""
     /// The line whose comment field is open: (hunk id, line index).
     @State private var commenting: LineRef?
+    @FocusState private var commentFocused: Bool
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
@@ -270,10 +271,17 @@ private struct FileCard: View {
         }
         return HStack(spacing: skin.size.s6) {
             AinkradTextField(
-                text: $comment, placeholder: file.hasFileLines ? "Comment on line \(line) — ↵ adds it" : "Comment — ↵ adds it")
-                .onSubmit(add)
-                .onExitCommand { commenting = nil }
-                .focusOnAppear()
+                text: $comment, placeholder: file.hasFileLines ? "Comment on line \(line) — ↵ adds it" : "Comment — ↵ adds it",
+                focus: $commentFocused
+            )
+            .onSubmit(add)
+            .onExitCommand { commenting = nil }
+            // A turn later: focus set in the same update as the click doesn't stick. Reset first, so moving
+            // to another line's field (the one focus flag, still true) still moves the caret there.
+            .onAppear {
+                commentFocused = false
+                DispatchQueue.main.async { commentFocused = true }
+            }
             AinkradIconButton(systemName: "xmark", size: skin.size.s22, tooltip: "Cancel") { commenting = nil }
         }
         .padding(.vertical, skin.size.s4)
