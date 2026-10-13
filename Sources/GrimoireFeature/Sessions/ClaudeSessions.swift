@@ -177,10 +177,14 @@ public enum ClaudeSessions {
         return (String(path[..<marker.lowerBound]), name)
     }
 
-    /// A prompt the person typed, as opposed to tool results and injected context.
+    /// A prompt the person typed, as opposed to tool results and injected context. The interactive CLI
+    /// marks it `origin.kind: human`; a session driven over stream-json (`entrypoint: sdk-cli`, every
+    /// thread Grimoire starts) writes no origin at all (GD2).
     static func humanPrompt(_ line: JSONValue) -> String? {
-        guard line["type"]?.stringValue == "user", line["isMeta"]?.boolValue != true,
-            line["origin"]?["kind"]?.stringValue == "human",
+        let typed =
+            line["origin"]?["kind"]?.stringValue == "human"
+            || (line["origin"] == nil && line["entrypoint"]?.stringValue == "sdk-cli")
+        guard line["type"]?.stringValue == "user", line["isMeta"]?.boolValue != true, typed,
             let text = line["message"]?["content"]?.stringValue,
             !text.isEmpty
         else { return nil }

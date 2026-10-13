@@ -9,6 +9,13 @@ private enum Line {
     static func human(_ text: String, cwd: String = "/repo", branch: String = "main") -> String {
         #"{"type":"user","cwd":"\#(cwd)","gitBranch":"\#(branch)","origin":{"kind":"human"},"message":{"role":"user","content":"\#(text)"}}"#
     }
+    /// A prompt sent over stream-json, as Grimoire does: no `origin`.
+    static func sdk(_ text: String) -> String {
+        #"{"type":"user","cwd":"/repo","entrypoint":"sdk-cli","message":{"role":"user","content":"\#(text)"}}"#
+    }
+    static func command(_ text: String) -> String {
+        #"{"type":"user","cwd":"/repo","entrypoint":"cli","message":{"role":"user","content":"\#(text)"}}"#
+    }
     static func meta(_ text: String) -> String {
         #"{"type":"user","cwd":"/repo","isMeta":true,"message":{"role":"user","content":"\#(text)"}}"#
     }
@@ -43,6 +50,8 @@ struct ClaudeSessionsTests {
         #expect(summarize(base + [Line.aiTitle("Old"), Line.aiTitle("Login bug fix")])?.title == "Login bug fix")
         #expect(summarize(base + [Line.customTitle("Mine"), Line.aiTitle("Later AI title")])?.title == "Mine")
         #expect(summarize([Line.bookkeeping, Line.assistant("hi")])?.title == "Untitled")
+        // GD2: a thread Grimoire started is titled by its first prompt; the CLI's own commands still aren't.
+        #expect(summarize([Line.command("/clear"), Line.sdk("add a test"), Line.assistant("ok")])?.title == "add a test")
     }
 
     @Test("working directory, branch and the latest model come from the file")
