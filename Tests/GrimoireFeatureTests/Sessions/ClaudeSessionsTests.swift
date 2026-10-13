@@ -9,6 +9,13 @@ private enum Line {
     static func human(_ text: String, cwd: String = "/repo", branch: String = "main") -> String {
         #"{"type":"user","cwd":"\#(cwd)","gitBranch":"\#(branch)","origin":{"kind":"human"},"message":{"role":"user","content":"\#(text)"}}"#
     }
+    /// A prompt sent over stream-json, as Grimoire does: no `origin`.
+    static func sdk(_ text: String) -> String {
+        #"{"type":"user","cwd":"/repo","entrypoint":"sdk-cli","message":{"role":"user","content":"\#(text)"}}"#
+    }
+    static func command(_ text: String) -> String {
+        #"{"type":"user","cwd":"/repo","entrypoint":"cli","message":{"role":"user","content":"\#(text)"}}"#
+    }
     static func meta(_ text: String) -> String {
         #"{"type":"user","cwd":"/repo","isMeta":true,"message":{"role":"user","content":"\#(text)"}}"#
     }
@@ -43,6 +50,33 @@ struct ClaudeSessionsTests {
         #expect(summarize(base + [Line.aiTitle("Old"), Line.aiTitle("Login bug fix")])?.title == "Login bug fix")
         #expect(summarize(base + [Line.customTitle("Mine"), Line.aiTitle("Later AI title")])?.title == "Mine")
         #expect(summarize([Line.bookkeeping, Line.assistant("hi")])?.title == "Untitled")
+        // GD2: a thread Grimoire started is titled by its first prompt; the CLI's own commands still aren't.
+        #expect(summarize([Line.command("/clear"), Line.sdk("add a test"), Line.assistant("ok")])?.title == "add a test")
+    }
+
+    @Test("sessions run in a temporary folder aren't listed unless that folder was opened (GD6)")
+    func scratch() {
+        func session(_ path: String) -> ClaudeSessionSummary {
+            ClaudeSessionSummary(
+                id: path, fileURL: URL(fileURLWithPath: "/x"), workingDirectory: path, projectPath: path, title: "t",
+                lastActivity: .distantPast)
+        }
+        let sessions = [
+            "/Users/me/app", "/private/var/folders/z5/x/T/grimoire-agy-1", "/private/tmp/claude-501/a/scratchpad/agyproj",
+            "/tmp/kept", NSTemporaryDirectory() + "grimoire-x",
+        ].map(session)
+        #expect(ClaudeSessions.withoutScratch(sessions, keeping: ["/tmp/kept"]).map(\.projectPath) == ["/Users/me/app", "/tmp/kept"])
+    }
+
+    @Test("a long title is cut at a word boundary with an ellipsis (GD22)")
+    func longTitles() {
+        #expect(ClaudeSessionSummary.title("short") == "short")
+        let words = String(repeating: "word ", count: 20) + "end"  // 103 characters
+        #expect(ClaudeSessionSummary.title(words) == String(repeating: "word ", count: 16).dropLast() + "…")
+        let exact = String(repeating: "a", count: 80) + " tail"
+        #expect(ClaudeSessionSummary.title(exact) == String(repeating: "a", count: 80) + "…", "the space after 80 fits")
+        let unbroken = String(repeating: "x", count: 100)
+        #expect(ClaudeSessionSummary.title(unbroken) == String(repeating: "x", count: 80) + "…")
     }
 
     @Test("working directory, branch and the latest model come from the file")

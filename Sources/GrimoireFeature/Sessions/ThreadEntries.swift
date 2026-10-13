@@ -17,6 +17,8 @@ struct ToolCall: Equatable, Sendable {
     var input: JSONValue
     /// `nil` while the tool is still running (or its result was never stored).
     var result: ToolOutput?
+    /// The command the agent wrote, when a hook rewrote it before it ran; `input` then holds what runs.
+    var rewrittenFrom: String? = nil
 }
 
 struct ToolOutput: Equatable, Sendable {
@@ -149,7 +151,12 @@ enum ToolSummary {
         return path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : path
     }
 
-    static func lineCount(_ text: String) -> Int {
-        text.isEmpty ? 0 : text.split(separator: "\n", omittingEmptySubsequences: false).count
+    static func lineCount(_ text: String) -> Int { lines(text).count }
+
+    /// `text` split into lines; the newline that ends the last line (nearly all
+    /// output has one) does not start another, empty one (GD18).
+    static func lines(_ text: String) -> [Substring] {
+        let body = text.hasSuffix("\n") ? text.dropLast() : Substring(text)
+        return text.isEmpty ? [] : body.split(separator: "\n", omittingEmptySubsequences: false)
     }
 }

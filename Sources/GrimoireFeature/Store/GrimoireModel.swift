@@ -168,6 +168,7 @@ final class GrimoireModel {
         let root = sessionsRoot
         let override = settings.cliPathOverride
         let listers = listers
+        let opened = Set(settings.openedFolders)
         let (detected, listings, listed) = await Task.detached(priority: .userInitiated) {
             let detected = Self.detectCLI(override: override)
             var listings: [Harness: AgentListing] = [:]
@@ -177,7 +178,7 @@ final class GrimoireModel {
                 listings[harness] = listing
                 threads += listing.threads
             }
-            return (detected, listings, ClaudeSessions.grouped(threads))
+            return (detected, listings, ClaudeSessions.grouped(ClaudeSessions.withoutScratch(threads, keeping: opened)))
         }.value
         cli = detected.status
         otherCLIs = listings.mapValues(\.status)
@@ -205,7 +206,7 @@ final class GrimoireModel {
         let worktreeName = worktree && harness == .claude ? Self.worktreeName(for: prompt) : nil
         let draft = ClaudeSessionSummary(
             id: placeholder, harness: harness, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: project,
-            projectPath: project, worktree: worktreeName, title: String(prompt.prefix(80)), model: model,
+            projectPath: project, worktree: worktreeName, title: ClaudeSessionSummary.title(prompt), model: model,
             lastActivity: Date())
         let live = makeLive(
             harness: harness,

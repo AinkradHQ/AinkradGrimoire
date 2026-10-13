@@ -52,7 +52,7 @@ enum CodexSessions {
     static func summary(_ thread: JSONValue) -> ClaudeSessionSummary? {
         guard let id = thread["id"]?.stringValue, let cwd = thread["cwd"]?.stringValue else { return nil }
         let (project, worktree) = ClaudeSessions.splitWorktree(cwd)
-        let title = thread["name"]?.stringValue ?? thread["preview"]?.stringValue.map { String($0.prefix(80)) } ?? "Untitled"
+        let title = thread["name"]?.stringValue ?? thread["preview"]?.stringValue.map(ClaudeSessionSummary.title) ?? "Untitled"
         return ClaudeSessionSummary(
             id: id, harness: .codex, fileURL: URL(fileURLWithPath: thread["path"]?.stringValue ?? "/dev/null"),
             workingDirectory: cwd, projectPath: project, worktree: worktree,

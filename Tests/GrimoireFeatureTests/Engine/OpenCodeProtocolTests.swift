@@ -72,6 +72,25 @@ struct OpenCodeProtocolTests {
         #expect(wire.decode(idle) == [.turnFinished(TurnResult(outcome: .success, sessionID: "s", costUSD: nil, text: nil))])
     }
 
+    /// GD8: OpenCode (1.18) sends a failed turn's `session.error` again after its `session.idle`; the next
+    /// turn, which succeeds, must not inherit it.
+    @Test("an error repeated after a failed turn's idle doesn't fail the next turn")
+    func staleErrorAfterIdle() {
+        var wire = OpenCodeProtocol()
+        wire.sessionID = "s"
+        let idle: JSONValue = ["type": "session.idle", "properties": ["sessionID": "s"]]
+        let busy: JSONValue = ["type": "session.status", "properties": ["sessionID": "s", "status": ["type": "busy"]]]
+        let error: JSONValue = [
+            "type": "session.error", "properties": ["sessionID": "s", "error": ["name": "UnknownError", "data": ["message": "nope"]]],
+        ]
+        _ = wire.decode(busy)
+        _ = wire.decode(error)
+        #expect(wire.decode(idle) == [.turnFinished(TurnResult(outcome: .failed("nope"), sessionID: "s", costUSD: nil, text: nil))])
+        _ = wire.decode(error)
+        _ = wire.decode(busy)
+        #expect(wire.decode(idle) == [.turnFinished(TurnResult(outcome: .success, sessionID: "s", costUSD: nil, text: nil))])
+    }
+
     @Test("a model OpenCode can't find says how to pick another; other errors read as they are")
     func modelNotFoundExplains() {
         let raw = "ProviderModelNotFoundError: Model not found: anthropic/claude-sonnet-4-5."

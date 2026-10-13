@@ -34,7 +34,14 @@ final class ReviewModel {
         error = nil
         switch scope {
         case .turn, .thread:
-            files = ReviewChanges.fromEntries(live.entries, scope: scope, workingDirectory: workingDirectory)
+            let edits = ReviewChanges.fromEntries(live.entries, scope: scope, workingDirectory: workingDirectory)
+            let unknown = edits.filter { $0.diff == nil }.map(\.path)
+            guard !unknown.isEmpty else {
+                files = edits
+                return
+            }
+            let diff = try? await git.run(["diff", "HEAD", "--relative", "--no-color", "--no-ext-diff", "--"] + unknown)
+            files = ReviewChanges.filledFromGit(edits, diff: diff ?? "")
         case .uncommitted:
             isLoading = true
             defer { isLoading = false }

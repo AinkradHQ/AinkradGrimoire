@@ -152,6 +152,7 @@ final class LiveThread {
             call.result = ToolOutput(content: content, isError: isError)
             entries[index] = .tool(call)
         case .approval(let request):
+            adoptRewrite(request)
             pendingApproval = request
             status = .needsYou
             onNeedsYou?(request)
@@ -189,6 +190,19 @@ final class LiveThread {
             // say so rather than going quietly idle.
             status = stopping ? .idle : .failed("The agent exited mid-turn (code \(code))")
         }
+    }
+
+    /// A PreToolUse hook may rewrite a command (`cat` → `rtk read`) before the approval is asked; the card
+    /// then shows what will run, like the approval does, and keeps what the agent wrote (GD3).
+    private func adoptRewrite(_ request: ApprovalRequest) {
+        guard let index = toolIndex[request.toolUseID], case .tool(var call) = entries[index],
+            case .object(var input) = call.input, let original = input["command"]?.stringValue,
+            let actual = request.input["command"]?.stringValue, actual != original
+        else { return }
+        input["command"] = .string(actual)
+        call.input = .object(input)
+        call.rewrittenFrom = call.rewrittenFrom ?? original
+        entries[index] = .tool(call)
     }
 
     private func appendStreaming(_ text: String, messageID: String) {

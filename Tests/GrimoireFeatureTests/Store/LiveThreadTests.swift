@@ -73,6 +73,26 @@ struct LiveThreadTests {
         #expect(live.status == .working)
     }
 
+    @Test("GD3: a command a hook rewrote shows as it will run, keeping what the agent wrote")
+    func rewrittenCommand() {
+        let (live, _) = make()
+        live.send("show it")
+        live.apply(.block(messageID: "m", .toolUse(id: "t", name: "Bash", input: ["command": "cat -n a.txt"])))
+        live.apply(
+            .approval(
+                ApprovalRequest(
+                    id: "r", toolUseID: "t", toolName: "Bash", input: ["command": "rtk read a.txt"], summary: "",
+                    suggestions: [])))
+        guard case .tool(let call) = live.entries.last else { return #expect(Bool(false), "no tool card") }
+        #expect(call.input["command"] == "rtk read a.txt")
+        #expect(call.rewrittenFrom == "cat -n a.txt")
+        // An approval with no command (Codex's file change) leaves the card alone.
+        live.apply(.block(messageID: "m", .toolUse(id: "p", name: "Patch", input: ["changes": []])))
+        live.apply(
+            .approval(ApprovalRequest(id: "r2", toolUseID: "p", toolName: "Patch", input: .null, summary: "", suggestions: [])))
+        #expect(live.entries.last == .tool(ToolCall(id: "p", name: "Patch", input: ["changes": []], result: nil)))
+    }
+
     @Test("a recorded Claude session replays into the thread without duplicates or errors")
     func recordedSession() throws {
         let url = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

@@ -69,7 +69,7 @@ enum AgySessions {
         let (project, worktree) = ClaudeSessions.splitWorktree(directory)
         return ClaudeSessionSummary(
             id: id, harness: .agy, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: directory,
-            projectPath: project, worktree: worktree, title: title.isEmpty ? "Untitled" : String(title.prefix(80)),
+            projectPath: project, worktree: worktree, title: title.isEmpty ? "Untitled" : ClaudeSessionSummary.title(title),
             model: nil, lastActivity: date(modified) ?? .distantPast)
     }
 

@@ -31,6 +31,14 @@ struct SidebarModelTests {
             })
     }
 
+    @Test("a search that hides everything says so (GD20)")
+    func noMatches() {
+        let projects = [project("/w/Ainkrad", ["Glass sidebar"])]
+        #expect(Sidebar.noMatchTitle(query: " zzz ", visible: []) == "No threads match “zzz”")
+        #expect(Sidebar.noMatchTitle(query: "glass", visible: projects) == nil)
+        #expect(Sidebar.noMatchTitle(query: "", visible: []) == nil, "no search: the sidebar's own empty state")
+    }
+
     @Test("search keeps matching threads, or a whole project when its name matches")
     func search() {
         let projects = [project("/w/Ainkrad", ["Glass sidebar", "Release"]), project("/w/GitScope", ["Glass tabs"])]
@@ -103,5 +111,19 @@ struct SidebarModelTests {
         #expect(ModelName.display("claude-haiku-5-5") == "haiku 5.5")
         #expect(ModelName.display("gpt-5") == "gpt 5")
         #expect(ModelName.display("sonnet") == "sonnet")
+    }
+
+    @Test("each agent's resume command; none for a draft (GD21)")
+    func resumeCommands() {
+        func thread(_ harness: Harness, id: String = "abc") -> ClaudeSessionSummary {
+            ClaudeSessionSummary(
+                id: id, harness: harness, fileURL: URL(fileURLWithPath: "/dev/null"), workingDirectory: "/p/it's",
+                projectPath: "/p", worktree: nil, title: "t", model: nil, lastActivity: Date())
+        }
+        #expect(ThreadView.resumeCommand(for: thread(.claude)) == #"cd '/p/it'\''s' && claude --resume abc"#)
+        #expect(ThreadView.resumeCommand(for: thread(.codex))?.hasSuffix("&& codex resume abc") == true)
+        #expect(ThreadView.resumeCommand(for: thread(.opencode))?.hasSuffix("&& opencode --session abc") == true)
+        #expect(ThreadView.resumeCommand(for: thread(.agy))?.hasSuffix("&& agy --conversation abc") == true)
+        #expect(ThreadView.resumeCommand(for: thread(.codex, id: "new-1")) == nil)
     }
 }

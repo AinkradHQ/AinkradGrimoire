@@ -48,28 +48,50 @@ struct ThreadView: View {
                 model.forkThread(thread)
             }
         }
-        AinkradMenuButton(
-            items: [
-                AinkradMenuItem(title: "Copy resume command", systemName: "doc.on.doc") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(
-                        "cd \(Self.shellQuoted(thread.workingDirectory)) && claude --resume \(thread.id)",
-                        forType: .string)
-                },
-                AinkradMenuItem(title: "Reveal session file", systemName: "doc.text.magnifyingglass") {
-                    NSWorkspace.shared.activateFileViewerSelecting([thread.fileURL])
-                },
-                AinkradMenuItem(title: "Open project in Finder", systemName: "folder") {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: thread.workingDirectory))
-                },
-            ]
-        ) {
+        AinkradMenuButton(items: moreItems) {
             Image(systemName: "ellipsis")
                 .frame(width: skin.size.s30, height: skin.size.s30)
                 .contentShape(Rectangle())
         }
         .fixedSize()
         .help("More")
+    }
+
+    /// Resume and reveal only where they lead somewhere: a draft has no session yet, and only Claude and
+    /// Codex keep a session file (GD21).
+    private var moreItems: [AinkradMenuItem] {
+        var items: [AinkradMenuItem] = []
+        if let command = Self.resumeCommand(for: thread) {
+            items.append(
+                AinkradMenuItem(title: "Copy resume command", systemName: "doc.on.doc") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                })
+        }
+        if thread.fileURL.path != "/dev/null" {
+            items.append(
+                AinkradMenuItem(title: "Reveal session file", systemName: "doc.text.magnifyingglass") {
+                    NSWorkspace.shared.activateFileViewerSelecting([thread.fileURL])
+                })
+        }
+        items.append(
+            AinkradMenuItem(title: "Open project in Finder", systemName: "folder") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: thread.workingDirectory))
+            })
+        return items
+    }
+
+    /// The shell command that continues `thread` in its own CLI; `nil` for a draft the CLI hasn't named.
+    static func resumeCommand(for thread: ClaudeSessionSummary) -> String? {
+        guard !thread.id.hasPrefix("new-") else { return nil }
+        let resume =
+            switch thread.harness {
+            case .claude: "claude --resume"
+            case .codex: "codex resume"
+            case .opencode: "opencode --session"
+            case .agy: "agy --conversation"
+            }
+        return "cd \(shellQuoted(thread.workingDirectory)) && \(resume) \(thread.id)"
     }
 
     static func shellQuoted(_ path: String) -> String {
@@ -214,6 +236,14 @@ private struct ToolCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s8) {
             header
+            if let original = call.rewrittenFrom {
+                // The header shows what runs (as the approval does); this is what the agent wrote (GD3).
+                Text("Rewritten by a hook from: \(original)")
+                    .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                    .foregroundStyle(skin.color(skin.text.faint))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             if isExpanded || isWaiting, let body = detail {
                 body
             }
@@ -296,17 +326,19 @@ private struct ToolCard: View {
     }
 }
 
-/// A command's output or a file's content: monospaced, the first lines only.
+/// A command's output or a file's content: monospaced, the first lines until "N more lines" opens the rest.
 private struct OutputBlock: View {
     let text: String
     let maxLines: Int
+    @State private var showsAll = false
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTypography) private var typography
 
     var body: some View {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        let shown = lines.prefix(maxLines).joined(separator: "\n")
+        let lines = ToolSummary.lines(text)
+        // ponytail: one Text for the whole output; virtualize if multi-thousand-line outputs get slow.
+        let shown = lines.prefix(showsAll ? lines.count : maxLines).joined(separator: "\n")
         VStack(alignment: .leading, spacing: skin.size.s4) {
             Text(shown)
                 .font(AinkradFontResolver.font(size: 11.5, mono: true, typography: typography))
@@ -314,9 +346,19 @@ private struct OutputBlock: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if lines.count > maxLines {
-                Text("\(lines.count - maxLines) more lines")
+                // A plain button, so Full Keyboard Access can focus it and Space opens the rest (GD19).
+                Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
+                    showsAll.toggle()
+                } label: {
+                    HStack(spacing: skin.size.s4) {
+                        Image(systemName: showsAll ? "chevron.up" : "chevron.down")
+                        Text(showsAll ? "Show less" : "\(lines.count - maxLines) more lines")
+                    }
                     .font(skin.font(AinkradFontToken(sizeKey: "t10")))
                     .foregroundStyle(skin.color(skin.text.faint))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(skin.size.s8)

@@ -72,6 +72,14 @@ struct ThreadEntriesTests {
         #expect(
             ToolSummary.result(name: "Bash", input: .null, output: ToolOutput(content: "ok", isError: false))
                 == "1 line")
+        // GD18: the newline that ends the output is not one more line.
+        #expect(
+            ToolSummary.result(name: "Bash", input: .null, output: ToolOutput(content: "ok\n", isError: false))
+                == "1 line")
+        #expect(
+            ToolSummary.result(name: "Read", input: .null, output: ToolOutput(content: "a\n\nc\n", isError: false))
+                == "3 lines")
+        #expect(ToolSummary.lines("\n") == [""])
         #expect(
             ToolSummary.result(name: "Bash", input: .null, output: ToolOutput(content: "exit 1\nmore", isError: true))
                 == "exit 1")

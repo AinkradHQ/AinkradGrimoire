@@ -54,6 +54,19 @@ public struct ClaudeSessionSummary: Sendable, Equatable, Identifiable {
     public var gitBranch: String?
     public var model: String?
     public var lastActivity: Date
+
+    static let titleLimit = 80
+
+    /// `text` as a row title: whole when short, else cut at the last word that fits, with "…" (GD22).
+    static func title(_ text: String) -> String {
+        guard text.count > titleLimit else { return text }
+        let window = text.prefix(titleLimit + 1)
+        let cut =
+            window.lastIndex(where: \.isWhitespace).flatMap { space in
+                window.distance(from: window.startIndex, to: space) >= titleLimit / 2 ? window[..<space] : nil
+            } ?? window.prefix(titleLimit)
+        return cut.trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+    }
 }
 
 /// A working directory with its sessions, newest first.
@@ -87,6 +100,15 @@ public enum ClaudeSessions {
             sessions += files.filter { $0.pathExtension == "jsonl" }.compactMap(summary(of:))
         }
         return grouped(sessions)
+    }
+
+    /// Every agent's sessions minus those run in a temporary folder — test runs and scratchpads
+    /// (`grimoire-agy-<UUID>`, `…/scratchpad/agyproj`) — unless you opened that folder yourself (GD6).
+    static func withoutScratch(_ sessions: [ClaudeSessionSummary], keeping opened: Set<String>) -> [ClaudeSessionSummary] {
+        let temporary = ["/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/", NSTemporaryDirectory()]
+        return sessions.filter { session in
+            opened.contains(session.projectPath) || !temporary.contains { session.projectPath.hasPrefix($0) }
+        }
     }
 
     /// Sessions of any harness grouped by project, newest first.
@@ -155,7 +177,7 @@ public enum ClaudeSessions {
                 branch = parse(chunk)?["gitBranch"]?.stringValue
             }
         }
-        let title = customTitle ?? aiTitle ?? firstPrompt.map { String($0.prefix(80)) } ?? "Untitled"
+        let title = customTitle ?? aiTitle ?? firstPrompt.map(ClaudeSessionSummary.title) ?? "Untitled"
         let (projectPath, worktree) = splitWorktree(workingDirectory)
         return ClaudeSessionSummary(
             id: id, fileURL: fileURL, workingDirectory: workingDirectory, projectPath: projectPath, worktree: worktree,
@@ -177,10 +199,14 @@ public enum ClaudeSessions {
         return (String(path[..<marker.lowerBound]), name)
     }
 
-    /// A prompt the person typed, as opposed to tool results and injected context.
+    /// A prompt the person typed, as opposed to tool results and injected context. The interactive CLI
+    /// marks it `origin.kind: human`; a session driven over stream-json (`entrypoint: sdk-cli`, every
+    /// thread Grimoire starts) writes no origin at all (GD2).
     static func humanPrompt(_ line: JSONValue) -> String? {
-        guard line["type"]?.stringValue == "user", line["isMeta"]?.boolValue != true,
-            line["origin"]?["kind"]?.stringValue == "human",
+        let typed =
+            line["origin"]?["kind"]?.stringValue == "human"
+            || (line["origin"] == nil && line["entrypoint"]?.stringValue == "sdk-cli")
+        guard line["type"]?.stringValue == "user", line["isMeta"]?.boolValue != true, typed,
             let text = line["message"]?["content"]?.stringValue,
             !text.isEmpty
         else { return nil }

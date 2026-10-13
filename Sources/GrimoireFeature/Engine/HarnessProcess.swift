@@ -64,29 +64,36 @@ final class HarnessProcess: @unchecked Sendable {
     }
 
     func run() throws {
+        // Nothing here needs GCD's global pool (GD25): the readers block on threads of their own, the exit
+        // comes from `terminationHandler` and is reported on a private queue. Blocking reads plus
+        // `waitUntilExit` on that pool stalled for minutes once it was busy with other blocked work.
+        let finished = DispatchGroup()
+        finished.enter()  // stdout at EOF
+        finished.enter()  // stderr at EOF
+        finished.enter()  // the child exited
+        process.terminationHandler = { _ in finished.leave() }
         try process.run()
-        // Blocking reads on their own threads: `availableData` returns as soon as
-        // the child writes anything. (`FileHandle.bytes` holds pipe data back
-        // until its buffer fills, which stalls a live session.)
-        let stderrDone = DispatchGroup()
-        stderrDone.enter()
-        DispatchQueue.global().async { [self] in
+        // Blocking reads: `availableData` returns as soon as the child writes
+        // anything. (`FileHandle.bytes` holds pipe data back until its buffer
+        // fills, which stalls a live session.)
+        Thread.detachNewThread { [self] in
             while case let data = stderr.fileHandleForReading.availableData, !data.isEmpty {
                 tailLock.withLock {
                     stderrTail.append(data)
                     if stderrTail.count > Self.stderrLimit * 2 { stderrTail = stderrTail.suffix(Self.stderrLimit) }
                 }
             }
-            stderrDone.leave()
+            finished.leave()
         }
-        DispatchQueue.global().async { [self] in
+        Thread.detachNewThread { [self] in
             var buffer = LineBuffer()
             while case let data = stdout.fileHandleForReading.availableData, !data.isEmpty {
                 for line in buffer.append(data) { continuation.yield(.line(line)) }
             }
             if let last = buffer.flush() { continuation.yield(.line(last)) }
-            process.waitUntilExit()
-            stderrDone.wait()
+            finished.leave()
+        }
+        finished.notify(queue: DispatchQueue(label: "HarnessProcess.exit")) { [self] in
             let tail = tailLock.withLock { stderrTail.suffix(Self.stderrLimit) }
             continuation.yield(.exited(code: process.terminationStatus, stderr: String(decoding: tail, as: UTF8.self)))
             continuation.finish()

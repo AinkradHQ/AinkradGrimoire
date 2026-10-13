@@ -3,7 +3,8 @@ import Testing
 
 @testable import GrimoireFeature
 
-@Suite("HarnessProcess")
+// A hang here (GD25) must fail the run, not stall it for minutes.
+@Suite("HarnessProcess", .timeLimit(.minutes(1)))
 struct HarnessProcessTests {
     private func collect(_ script: String, input: [String] = []) async throws -> [HarnessProcess.Output] {
         let process = HarnessProcess(
@@ -33,6 +34,19 @@ struct HarnessProcessTests {
         try process.run()
         for await _ in process.output {}
         #expect(throws: (any Error).self) { try process.write("hello") }
+    }
+
+    /// The bug this guards (GD25): the readers and `waitUntilExit` sat on GCD's global pool, so a run under
+    /// load (pool busy with other blocked work) waited minutes for the exit. They must not need that pool.
+    @Test("the exit arrives while GCD's global pool is saturated")
+    func exitWithBusyPool() async throws {
+        let blocker = DispatchSemaphore(value: 0)
+        for _ in 0..<128 { DispatchQueue.global().async { _ = blocker.wait(timeout: .now() + 5) } }
+        defer { for _ in 0..<128 { blocker.signal() } }
+        let started = ContinuousClock.now
+        let outputs = try await collect("echo hi; exit 2")
+        #expect(outputs == [.line("hi"), .exited(code: 2, stderr: "")])
+        #expect(ContinuousClock.now - started < .seconds(3))
     }
 
     /// The bug this guards: `FileHandle.bytes` held a running child's output
