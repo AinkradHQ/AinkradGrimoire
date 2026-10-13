@@ -80,7 +80,7 @@ final class GrimoireModel {
     private(set) var models: [Harness: [ModelChoice]] = [:]
     var isShowingSettings = false
     private let signals: PluginSignalEmitter?
-    private let apps: PluginAppLauncher?
+    let apps: PluginAppLauncher?
     /// Why the last "open in Rune" didn't happen; cleared on the next try.
     private(set) var terminalProblem: String?
     private let sessionsRoot: URL
@@ -362,6 +362,10 @@ final class GrimoireModel {
             guard let self, let live else { return }
             self.notifyNeedsYou(live, request: request)
         }
+        live.onTurnFinished = { [weak self, weak live] started in
+            guard let self, let live else { return }
+            self.announceTurn(live, harness: harness, startedAt: started)
+        }
         return live
     }
 
@@ -478,17 +482,6 @@ final class GrimoireModel {
         process.waitUntilExit()
         return String(decoding: output, as: UTF8.self).split(whereSeparator: \.isWhitespace)
             .first { $0.first?.isNumber == true }.map(String.init)
-    }
-}
-
-extension GrimoireModel {
-    /// A payload another app sent with opening this window: Ask Agent opens the New Thread sheet on its
-    /// project with its request, for the user to choose the agent and start — nothing is sent unseen.
-    func handleLaunch(_ payload: String?) {
-        guard let ask = AskLaunch.decode(payload) else { return }
-        if !projects.contains(where: { $0.path == ask.path }) { openFolder(URL(fileURLWithPath: ask.path)) }
-        newThreadPreset = NewThreadPreset(project: ask.path, prompt: ask.prompt)
-        isComposingNewThread = true
     }
 }
 

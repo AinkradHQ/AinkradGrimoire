@@ -49,6 +49,8 @@ final class LiveThread {
     var onUsage: (([UsageWindow]) -> Void)?
     /// Called when a turn fails on the usage limit, with the reset the CLI named if it named one.
     var onUsageLimit: ((Date?) -> Void)?
+    /// Called as each turn ends, with when it started: Grimoire tells Forge which files it wrote (E5).
+    var onTurnFinished: ((Date?) -> Void)?
 
     private var engine: HarnessEngine?
     /// Set by `stop()`, so the exit it causes isn't reported as a crash.
@@ -86,6 +88,8 @@ final class LiveThread {
     }
 
     var isRunning: Bool { engine != nil }
+    /// The folder the agent works in.
+    var workingDirectory: String { startOptions.workingDirectory.path }
     /// Stop is offered (button and ⌘.) while a turn runs or waits on an approval.
     var canInterrupt: Bool { status == .working || status == .needsYou }
     /// "Always allow" is offered (button and ⌘⌥↩) only when the agent suggested a standing rule.
@@ -267,6 +271,8 @@ final class LiveThread {
             break
         case .turnFinished(let result):
             streaming = nil
+            let started = turnStartedAt
+            defer { onTurnFinished?(started) }
             turnStartedAt = nil
             costUSD += result.costUSD ?? 0
             switch result.outcome {
