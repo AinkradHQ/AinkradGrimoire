@@ -93,3 +93,30 @@ struct SettingsAndSignalsTests {
         #expect(model.usage[.claude]?.first?.utilization == 0.5)
     }
 }
+
+/// Mockup 8's "4 servers · 2 hooks · 14 skills", read from Claude Code's own files.
+@Suite("Claude config")
+struct ClaudeConfigTests {
+    @Test func countsServersHooksAndSkills() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("claude-config-\(UUID())")
+        let home = root.appendingPathComponent(".claude")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("skills/a"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: home.appendingPathComponent("skills/b"), withIntermediateDirectories: true)
+        try Data(#"{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{},{}]}],"Stop":[{"hooks":[{}]}]}}"#.utf8)
+            .write(to: home.appendingPathComponent("settings.json"))
+        try Data(#"{"mcpServers":{"x":{},"y":{}},"oauthAccount":{"emailAddress":"a"}}"#.utf8)
+            .write(to: root.appendingPathComponent(".claude.json"))
+        let config = ClaudeConfig.read(claudeHome: home)
+        #expect(config == ClaudeConfig(servers: 2, hooks: 3, skills: 2, isSignedIn: true))
+        #expect(config.summary == "2 servers · 3 hooks · 2 skills")
+        #expect(ClaudeConfig.read(claudeHome: root.appendingPathComponent("a/none")) == ClaudeConfig())
+    }
+
+    @Test func alwaysAllowNamesTheRule() {
+        let rule: JSONValue = ["type": "addRules", "rules": .array([["toolName": "Bash", "ruleContent": "git push:*"]])]
+        #expect(ApprovalBarRule.rule([rule]) == "git push *")
+        #expect(ApprovalBarRule.rule([["type": "setMode", "mode": "acceptEdits"]]) == "accept edits for this session")
+        #expect(ApprovalBarRule.rule([["type": "acceptForSession"]]) == nil)
+    }
+}
