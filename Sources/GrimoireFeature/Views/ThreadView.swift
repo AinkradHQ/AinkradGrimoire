@@ -9,32 +9,41 @@ struct ThreadView: View {
     let thread: ClaudeSessionSummary
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradToastCenter) private var toasts
+    @Environment(\.reviewReplacesThread) private var reviewReplacesThread
 
     var body: some View {
+        let review = model.isReviewOpen ? model.review(for: thread) : nil
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                ThreadHeader(thread: thread, model: model.current?.model) {
-                    actions
+            // Too narrow for both (GD26): the review pane stands in for the thread until it is closed.
+            if review == nil || !reviewReplacesThread { conversation }
+            if let review {
+                ReviewPane(review: review, fills: reviewReplacesThread, reviewInForge: { model.reviewInForge(thread) }) {
+                    model.isReviewOpen = false
                 }
-                if let live = model.current {
-                    ConversationView(live: live, workingDirectory: thread.workingDirectory) {
-                        EngineStateRows(model: model, thread: thread, live: live)
-                    }
-                    ThreadFooter(
-                        live: live, model: model, workingDirectory: thread.workingDirectory, harness: thread.harness)
-                } else {
-                    AinkradLoadingState(label: "Opening the thread…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            if model.isReviewOpen, let review = model.review(for: thread) {
-                ReviewPane(review: review, reviewInForge: { model.reviewInForge(thread) }) { model.isReviewOpen = false }
             }
         }
         // Every file:line the thread shows opens in Forge (E5).
         .environment(\.forgeOpener, ForgeOpener(model: model, directory: thread.workingDirectory))
         .onChange(of: model.terminalProblem) { _, problem in
             if let problem { toasts.show(problem, status: .warning) }
+        }
+    }
+
+    private var conversation: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ThreadHeader(thread: thread, model: model.current?.model) {
+                actions
+            }
+            if let live = model.current {
+                ConversationView(live: live, workingDirectory: thread.workingDirectory) {
+                    EngineStateRows(model: model, thread: thread, live: live)
+                }
+                ThreadFooter(
+                    live: live, model: model, workingDirectory: thread.workingDirectory, harness: thread.harness)
+            } else {
+                AinkradLoadingState(label: "Opening the thread…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
@@ -321,6 +330,7 @@ private struct ToolCard: View {
             Text(call.name)
                 .font(skin.font(AinkradFontToken(sizeKey: "t13", weight: "semibold")))
                 .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+                .fixedSize()  // never "Re ad" (GD26): the argument gives way instead
             Text(ToolSummary.argument(name: call.name, input: call.input, workingDirectory: workingDirectory))
                 .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
                 .foregroundStyle(skin.color(skin.text.muted))

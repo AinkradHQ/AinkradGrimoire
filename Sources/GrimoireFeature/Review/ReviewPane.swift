@@ -5,6 +5,8 @@ import SwiftUI
 /// everything uncommitted), comments for the agent, and the commit.
 struct ReviewPane: View {
     @Bindable var review: ReviewModel
+    /// Standing in for the thread in a narrow window (GD26): the pane takes the whole width.
+    var fills = false
     /// "Review in Forge": Forge's review of these changes, grouped by turn, with Keep / Undo there.
     var reviewInForge: (() -> Void)?
     let close: () -> Void
@@ -16,8 +18,7 @@ struct ReviewPane: View {
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s10) {
             header
-            AinkradSegmentedPicker(items: ReviewScope.allCases, selection: $review.scope) { $0.rawValue }
-                .fixedSize()
+            FittingPicker(items: ReviewScope.allCases, selection: $review.scope) { $0.rawValue }
             if let error = review.error {
                 Text(error)
                     .font(skin.font(AinkradFontToken(sizeKey: "t11")))
@@ -51,7 +52,8 @@ struct ReviewPane: View {
             footer
         }
         .padding(skin.size.s14)
-        .frame(minWidth: skin.size.s320, idealWidth: skin.size.s440, maxWidth: skin.size.s440)
+        .frame(
+            minWidth: fills ? nil : skin.size.s320, idealWidth: skin.size.s440, maxWidth: fills ? .infinity : skin.size.s440)
         .frame(maxHeight: .infinity, alignment: .top)
         // Fill, not a rule.
         .background(theme.surface.opacity(skin.opacity.o35))
@@ -83,6 +85,16 @@ struct ReviewPane: View {
     }
 
     @ViewBuilder
+    private var commitButtons: some View {
+        AinkradButton(title: "Commit", style: .primary) { Task { await review.commit() } }
+            .fixedSize()
+        AinkradButton(title: "Commit & open PR", style: .secondary) {
+            Task { await review.commitAndOpenPullRequest() }
+        }
+        .fixedSize()
+    }
+
+    @ViewBuilder
     private var footer: some View {
         VStack(alignment: .leading, spacing: skin.size.s8) {
             if let reviewInForge, !review.files.isEmpty {
@@ -97,14 +109,7 @@ struct ReviewPane: View {
                 .frame(maxWidth: .infinity)
             }
             AinkradTextField(text: $review.commitMessage, placeholder: "Commit message")
-            HStack(spacing: skin.size.s8) {
-                AinkradButton(title: "Commit", style: .primary) { Task { await review.commit() } }
-                    .fixedSize()
-                AinkradButton(title: "Commit & open PR", style: .secondary) {
-                    Task { await review.commitAndOpenPullRequest() }
-                }
-                .fixedSize()
-            }
+            FlowLayout(spacing: skin.size.s8) { commitButtons }
             .disabled(review.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
     }

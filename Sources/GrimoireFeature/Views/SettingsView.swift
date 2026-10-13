@@ -47,18 +47,16 @@ struct SettingsView: View {
                     }
                     group("New threads") {
                         row("Default model") {
-                            AinkradSegmentedPicker(
+                            FittingPicker(
                                 items: ["opus", "sonnet", "haiku"],
                                 selection: Binding(get: { settings.defaultModel }, set: { settings.defaultModel = $0 })
                             ) { $0.capitalized }
-                            .fixedSize()
                         }
                         row("Default mode") {
-                            AinkradSegmentedPicker(
+                            FittingPicker(
                                 items: PermissionMode.allCases,
                                 selection: Binding(get: { settings.defaultMode }, set: { settings.defaultMode = $0 })
                             ) { $0.title }
-                            .fixedSize()
                         }
                         row("Use a worktree") {
                             AinkradToggle(
@@ -92,13 +90,7 @@ struct SettingsView: View {
                     }
                     group("MCP servers, hooks & skills") {
                         row("Claude Code's own files") {
-                            HStack(spacing: skin.size.s8) {
-                                AinkradButton(title: "Open settings.json", style: .secondary) {
-                                    open(".claude/settings.json")
-                                }
-                                .fixedSize()
-                                AinkradButton(title: "Open ~/.claude", style: .ghost) { open(".claude") }.fixedSize()
-                            }
+                            FlowLayout(spacing: skin.size.s8) { claudeFileButtons }
                         }
                     }
                 }
@@ -106,6 +98,12 @@ struct SettingsView: View {
                 .padding(.bottom, skin.size.s20)
             }
         }
+    }
+
+    @ViewBuilder
+    private var claudeFileButtons: some View {
+        AinkradButton(title: "Open settings.json", style: .secondary) { open(".claude/settings.json") }.fixedSize()
+        AinkradButton(title: "Open ~/.claude", style: .ghost) { open(".claude") }.fixedSize()
     }
 
     private func detail(_ status: CLIStatus) -> String {
@@ -166,17 +164,28 @@ struct SettingsView: View {
 
     private func agentRow(badge: String, tint: Color, detail: String, @ViewBuilder action: () -> some View) -> some View
     {
-        HStack(spacing: skin.size.s14) {
-            AinkradBadge(text: badge, tint: tint)
-                .fixedSize()
-                .frame(minWidth: skin.size.s96, maxWidth: skin.size.s200, alignment: .leading)
-            Text(detail)
-                .font(AinkradFontResolver.font(size: 12, mono: true, typography: typography))
-                .foregroundStyle(skin.color(skin.text.muted))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: 0)
-            action()
+        let badge = AinkradBadge(text: badge, tint: tint).fixedSize()
+        let detail = Text(detail)
+            .font(AinkradFontResolver.font(size: 12, mono: true, typography: typography))
+            .foregroundStyle(skin.color(skin.text.muted))
+            .lineLimit(1)
+            .truncationMode(.middle)
+        // Narrow (GD26), the path goes under the badge rather than shrink to "…".
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: skin.size.s14) {
+                badge.frame(minWidth: skin.size.s96, maxWidth: skin.size.s200, alignment: .leading)
+                detail.fixedSize()
+                Spacer(minLength: 0)
+                action()
+            }
+            VStack(alignment: .leading, spacing: skin.size.s4) {
+                HStack(spacing: skin.size.s14) {
+                    badge
+                    Spacer(minLength: 0)
+                    action()
+                }
+                detail
+            }
         }
     }
 

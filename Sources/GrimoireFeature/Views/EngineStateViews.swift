@@ -126,34 +126,40 @@ struct FailureCard: View {
                 Text(failure.headline(harness))
                     .font(skin.font(AinkradFontToken(sizeKey: "t13", weight: "semibold")))
                     .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Text(failure.detail())
                 .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                 .foregroundStyle(skin.color(skin.text.muted))
                 .fixedSize(horizontal: false, vertical: true)
             if !failure.output.isEmpty { output }
-            HStack(spacing: skin.size.s8) {
-                AinkradButton(title: "Retry", style: .primary, icon: "arrow.clockwise", action: retry)
-                if failure.kind == .auth {
-                    AinkradButton(title: "Open Terminal to log in", style: .secondary, icon: "terminal", action: openTerminal)
-                        .help(EngineFailure.loginHint(harness))
-                }
-                AinkradButton(title: copied ? "Copied" : "Copy details", style: .ghost, icon: copied ? "checkmark" : "doc.on.doc") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(failure.details(harness), forType: .string)
-                    copied = true
-                    Task {
-                        try? await Task.sleep(for: .seconds(1.5))
-                        copied = false
-                    }
-                }
-            }
-            .fixedSize()
+            // Narrow (GD26), the buttons wrap under each other rather than widen the card past the window.
+            FlowLayout(spacing: skin.size.s8) { buttons }
         }
         .padding(skin.size.s14)
         .frame(maxWidth: skin.size.s640, alignment: .leading)
         .background(skin.shape(cut: AinkradRadius.md).fill(statusColors.danger.opacity(skin.opacity.o08)))
         .overlay(skin.shape(cut: AinkradRadius.md).stroke(statusColors.danger.opacity(skin.opacity.o35), lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        AinkradButton(title: "Retry", style: .primary, icon: "arrow.clockwise", action: retry).fixedSize()
+        if failure.kind == .auth {
+            AinkradButton(title: "Open Terminal to log in", style: .secondary, icon: "terminal", action: openTerminal)
+                .fixedSize()
+                .help(EngineFailure.loginHint(harness))
+        }
+        AinkradButton(title: copied ? "Copied" : "Copy details", style: .ghost, icon: copied ? "checkmark" : "doc.on.doc") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(failure.details(harness), forType: .string)
+            copied = true
+            Task {
+                try? await Task.sleep(for: .seconds(1.5))
+                copied = false
+            }
+        }
+        .fixedSize()
     }
 
     /// The last stderr lines, scrollable, opened at the end.
@@ -191,18 +197,15 @@ struct LimitBar: View {
         // Squeezed, the buttons go under the text rather than cut it short.
         ViewThatFits(in: .horizontal) {
             HStack(spacing: skin.size.s10) {
-                summary.fixedSize()
+                summary(wraps: false).fixedSize()
                 Spacer(minLength: skin.size.s8)
                 meter
                 buttons
             }
+            // Narrower still (GD26): the text gets the width (the full meter only repeats it) and the buttons wrap.
             VStack(alignment: .leading, spacing: skin.size.s8) {
-                HStack(spacing: skin.size.s10) {
-                    summary
-                    Spacer(minLength: skin.size.s8)
-                    meter
-                }
-                HStack(spacing: skin.size.s8) { buttons }
+                summary(wraps: true)
+                FlowLayout(spacing: skin.size.s8) { buttons }
             }
         }
         .padding(.horizontal, skin.size.s14).padding(.vertical, skin.size.s9)
@@ -213,7 +216,8 @@ struct LimitBar: View {
         .padding(.bottom, skin.spacing.xs)
     }
 
-    private var summary: some View {
+    /// Wrapping when squeezed (GD26), rather than cutting the headline short.
+    private func summary(wraps: Bool) -> some View {
         HStack(spacing: skin.size.s10) {
             Image(systemName: "gauge.with.needle")
                 .font(skin.font(AinkradFontToken(sizeKey: "t13", scaled: false)))
@@ -228,7 +232,8 @@ struct LimitBar: View {
                         .foregroundStyle(skin.color(skin.text.muted))
                 }
             }
-            .lineLimit(1)
+            .lineLimit(wraps ? nil : 1)
+            .fixedSize(horizontal: false, vertical: wraps)
         }
     }
 

@@ -5,6 +5,8 @@ import SwiftUI
 /// Projects → threads. Surfaces are told apart by fill, never by a line.
 struct Sidebar: View {
     @Bindable var model: GrimoireModel
+    /// A narrow window (GD26): the sidebar slims and its buttons fold to icons as they stop fitting.
+    var isCompact = false
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @FocusState private var isSearchFocused: Bool
@@ -22,12 +24,23 @@ struct Sidebar: View {
             }
             .padding(.leading, skin.size.s6)
 
-            HStack(spacing: AinkradSpacing.sm) {
-                AinkradButton(title: "New thread", style: .primary, icon: "plus") { model.isComposingNewThread = true }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AinkradSpacing.sm) {
+                    newThreadButton
+                    AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
+                        .fixedSize()
+                }
+                HStack(spacing: AinkradSpacing.sm) {
+                    newThreadButton
+                    openFolderIcon
+                }
+                HStack(spacing: AinkradSpacing.sm) {
+                    AinkradIconButton(systemName: "plus", size: skin.size.s30, tooltip: "New thread (⌘N)") {
+                        model.isComposingNewThread = true
+                    }
                     .disabled(model.projects.isEmpty)
-                    .fixedSize()
-                AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
-                    .fixedSize()
+                    openFolderIcon
+                }
             }
 
             AinkradSearchField(text: $model.searchText, placeholder: "Search threads", focus: $isSearchFocused)
@@ -57,7 +70,9 @@ struct Sidebar: View {
         .padding(.horizontal, skin.size.s10)
         .padding(.bottom, skin.size.s10)
         // Gives way before the thread does in a narrow window (GD16).
-        .frame(minWidth: skin.size.s260, idealWidth: skin.size.s300, maxWidth: skin.size.s300)
+        .frame(
+            minWidth: isCompact ? skin.size.s200 : skin.size.s260, idealWidth: isCompact ? skin.size.s200 : skin.size.s300,
+            maxWidth: isCompact ? skin.size.s200 : skin.size.s300)
         .frame(maxHeight: .infinity, alignment: .top)
         // Fill, not a rule.
         .background(theme.surface.opacity(skin.opacity.o35))
@@ -80,6 +95,16 @@ struct Sidebar: View {
                 }
             }
         }
+    }
+
+    private var newThreadButton: some View {
+        AinkradButton(title: "New thread", style: .primary, icon: "plus") { model.isComposingNewThread = true }
+            .disabled(model.projects.isEmpty)
+            .fixedSize()
+    }
+
+    private var openFolderIcon: some View {
+        AinkradIconButton(systemName: "folder.badge.plus", size: skin.size.s30, tooltip: "Open folder…") { chooseFolder() }
     }
 
     private var footer: some View {
