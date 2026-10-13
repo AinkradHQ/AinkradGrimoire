@@ -102,6 +102,15 @@ public enum ClaudeSessions {
         return grouped(sessions)
     }
 
+    /// Every agent's sessions minus those run in a temporary folder — test runs and scratchpads
+    /// (`grimoire-agy-<UUID>`, `…/scratchpad/agyproj`) — unless you opened that folder yourself (GD6).
+    static func withoutScratch(_ sessions: [ClaudeSessionSummary], keeping opened: Set<String>) -> [ClaudeSessionSummary] {
+        let temporary = ["/tmp/", "/private/tmp/", "/var/folders/", "/private/var/folders/", NSTemporaryDirectory()]
+        return sessions.filter { session in
+            opened.contains(session.projectPath) || !temporary.contains { session.projectPath.hasPrefix($0) }
+        }
+    }
+
     /// Sessions of any harness grouped by project, newest first.
     static func grouped(_ sessions: [ClaudeSessionSummary]) -> [ClaudeProject] {
         Dictionary(grouping: sessions, by: \.projectPath).map { path, sessions in

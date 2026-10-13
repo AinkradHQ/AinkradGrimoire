@@ -54,6 +54,20 @@ struct ClaudeSessionsTests {
         #expect(summarize([Line.command("/clear"), Line.sdk("add a test"), Line.assistant("ok")])?.title == "add a test")
     }
 
+    @Test("sessions run in a temporary folder aren't listed unless that folder was opened (GD6)")
+    func scratch() {
+        func session(_ path: String) -> ClaudeSessionSummary {
+            ClaudeSessionSummary(
+                id: path, fileURL: URL(fileURLWithPath: "/x"), workingDirectory: path, projectPath: path, title: "t",
+                lastActivity: .distantPast)
+        }
+        let sessions = [
+            "/Users/me/app", "/private/var/folders/z5/x/T/grimoire-agy-1", "/private/tmp/claude-501/a/scratchpad/agyproj",
+            "/tmp/kept", NSTemporaryDirectory() + "grimoire-x",
+        ].map(session)
+        #expect(ClaudeSessions.withoutScratch(sessions, keeping: ["/tmp/kept"]).map(\.projectPath) == ["/Users/me/app", "/tmp/kept"])
+    }
+
     @Test("a long title is cut at a word boundary with an ellipsis (GD22)")
     func longTitles() {
         #expect(ClaudeSessionSummary.title("short") == "short")

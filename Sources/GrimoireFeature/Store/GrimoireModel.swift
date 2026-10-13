@@ -168,6 +168,7 @@ final class GrimoireModel {
         let root = sessionsRoot
         let override = settings.cliPathOverride
         let listers = listers
+        let opened = Set(settings.openedFolders)
         let (detected, listings, listed) = await Task.detached(priority: .userInitiated) {
             let detected = Self.detectCLI(override: override)
             var listings: [Harness: AgentListing] = [:]
@@ -177,7 +178,7 @@ final class GrimoireModel {
                 listings[harness] = listing
                 threads += listing.threads
             }
-            return (detected, listings, ClaudeSessions.grouped(threads))
+            return (detected, listings, ClaudeSessions.grouped(ClaudeSessions.withoutScratch(threads, keeping: opened)))
         }.value
         cli = detected.status
         otherCLIs = listings.mapValues(\.status)
