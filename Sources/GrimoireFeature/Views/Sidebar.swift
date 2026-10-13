@@ -5,6 +5,8 @@ import SwiftUI
 /// Projects → threads. Surfaces are told apart by fill, never by a line.
 struct Sidebar: View {
     @Bindable var model: GrimoireModel
+    /// A narrow window (GD26): the sidebar slims and its buttons fold to icons as they stop fitting.
+    var isCompact = false
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @FocusState private var isSearchFocused: Bool
@@ -22,12 +24,23 @@ struct Sidebar: View {
             }
             .padding(.leading, skin.size.s6)
 
-            HStack(spacing: AinkradSpacing.sm) {
-                AinkradButton(title: "New thread", style: .primary, icon: "plus") { model.isComposingNewThread = true }
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: AinkradSpacing.sm) {
+                    newThreadButton
+                    AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
+                        .fixedSize()
+                }
+                HStack(spacing: AinkradSpacing.sm) {
+                    newThreadButton
+                    openFolderIcon
+                }
+                HStack(spacing: AinkradSpacing.sm) {
+                    AinkradIconButton(systemName: "plus", size: skin.size.s30, tooltip: "New thread (⌘N)") {
+                        model.isComposingNewThread = true
+                    }
                     .disabled(model.projects.isEmpty)
-                    .fixedSize()
-                AinkradButton(title: "Open folder…", style: .secondary) { chooseFolder() }
-                    .fixedSize()
+                    openFolderIcon
+                }
             }
 
             AinkradSearchField(text: $model.searchText, placeholder: "Search threads", focus: $isSearchFocused)
@@ -40,8 +53,11 @@ struct Sidebar: View {
                         projectSection(project)
                     }
                     if let title = Self.noMatchTitle(query: model.searchText, visible: model.visibleProjects) {
+                        // Search already covers every project, so "Clear search" is the one way out (mockup 12 D).
                         AinkradEmptyState(
-                            icon: "magnifyingglass", title: title, message: "Search looks at thread titles and project names.")
+                            icon: "magnifyingglass", title: title, message: "Search looks at thread titles and project names.",
+                            actionTitle: "Clear search"
+                        ) { model.searchText = "" }
                         .padding(.top, skin.size.s20)
                     }
                     if model.hiddenProjectCount > 0 {
@@ -57,7 +73,9 @@ struct Sidebar: View {
         .padding(.horizontal, skin.size.s10)
         .padding(.bottom, skin.size.s10)
         // Gives way before the thread does in a narrow window (GD16).
-        .frame(minWidth: skin.size.s260, idealWidth: skin.size.s300, maxWidth: skin.size.s300)
+        .frame(
+            minWidth: isCompact ? skin.size.s200 : skin.size.s260, idealWidth: isCompact ? skin.size.s200 : skin.size.s300,
+            maxWidth: isCompact ? skin.size.s200 : skin.size.s300)
         .frame(maxHeight: .infinity, alignment: .top)
         // Fill, not a rule.
         .background(theme.surface.opacity(skin.opacity.o35))
@@ -80,6 +98,16 @@ struct Sidebar: View {
                 }
             }
         }
+    }
+
+    private var newThreadButton: some View {
+        AinkradButton(title: "New thread", style: .primary, icon: "plus") { model.isComposingNewThread = true }
+            .disabled(model.projects.isEmpty)
+            .fixedSize()
+    }
+
+    private var openFolderIcon: some View {
+        AinkradIconButton(systemName: "folder.badge.plus", size: skin.size.s30, tooltip: "Open folder…") { chooseFolder() }
     }
 
     private var footer: some View {
@@ -230,12 +258,12 @@ private struct ThreadRow: View {
                 StatusDot(status: status, isLimited: limit != nil)
                 Text(thread.title)
                     .font(skin.font(AinkradFontToken(sizeKey: "t13")))
-                    .foregroundStyle(theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
+                    .foregroundStyle(onSelection ?? theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
                     .lineLimit(1)
                 Spacer(minLength: skin.size.s4)
                 Text(RelativeTime.short(thread.lastActivity))
                     .font(skin.font(AinkradFontToken(sizeKey: "t10", monospacedDigits: true)))
-                    .foregroundStyle(skin.color(skin.text.faint))
+                    .foregroundStyle(onSelection?.opacity(skin.opacity.o85) ?? skin.color(skin.text.faint))
             }
             // On a selected row (a solid accent fill under Glass) badges take the
             // foreground colour so they stay readable.
@@ -246,11 +274,11 @@ private struct ThreadRow: View {
                 }
                 if let limit {
                     Text(limit.resetsAt.map { "limit · \(UsageLimit.clock($0))" } ?? "limit")
-                        .foregroundStyle(statusColors.warning)
+                        .foregroundStyle(onSelection ?? statusColors.warning)
                 } else if status == .needsYou {
-                    Text("needs you").foregroundStyle(statusColors.warning)
+                    Text("needs you").foregroundStyle(onSelection ?? statusColors.warning)
                 } else if case .failed = status {
-                    Text("failed").foregroundStyle(statusColors.danger)
+                    Text("failed").foregroundStyle(onSelection ?? statusColors.danger)
                 }
             }
             .font(skin.font(AinkradFontToken(sizeKey: "t11")))
@@ -263,6 +291,15 @@ private struct ThreadRow: View {
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
+
+    private var onSelection: Color? { selectedRowText(skin, isSelected: isSelected) }
+}
+
+/// The colour readable on a selected row's accent fill under Glass, as the kit's own row text takes (GD27, Forge
+/// FD31): there a status's red or amber, or the faint time, sank into the blue. The status dot keeps its colour.
+/// Nil under Neon, whose selection is a faint wash.
+func selectedRowText(_ skin: AinkradSkin, isSelected: Bool) -> Color? {
+    isSelected && skin.usesNativeGlass ? skin.color(skin.palette.accentPrimary).contrastingText : nil
 }
 
 private struct ShowAllRow: View {

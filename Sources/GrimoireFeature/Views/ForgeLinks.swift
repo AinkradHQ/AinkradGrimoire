@@ -21,27 +21,30 @@ extension EnvironmentValues {
     @Entry var revealsForgePills = false
 }
 
-/// "↗ Forge": the kit badge at a row's end, shown while the row is hovered (fades and slides 4 pt in).
+/// "↗ Forge": the kit badge at a row's end, shown while the row is hovered (fades and slides 4 pt in). A real
+/// button (GD28): Full Keyboard Access tabs to it — focus shows it — and VoiceOver finds it whether or not it shows.
 struct ForgePill: View {
     let isVisible: Bool
     let action: () -> Void
+    @FocusState private var isFocused: Bool
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradReduceMotion) private var reduceMotion
 
     var body: some View {
-        AinkradBadge(text: "↗ Forge", tint: theme.accentSecondary)
-            .fixedSize()
-            .opacity(isVisible ? 1 : 0)
-            .offset(x: isVisible || reduceMotion ? 0 : skin.size.s4)
-            .animation(reduceMotion ? nil : skin.animation(skin.motion.hover), value: isVisible)
-            .contentShape(Rectangle())
-            // Over a row that is itself a button (a tool card's header): the pill's tap wins.
-            .highPriorityGesture(TapGesture().onEnded(action))
-            .help("Open in Forge (or ⌘-click the row)")
-            .accessibilityAddTraits(.isButton)
-            .accessibilityLabel("Open in Forge")
-            .accessibilityHidden(!isVisible)
+        let shown = isVisible || isFocused
+        Button(action: action) {  // design-lint: allow raw-control keyboard-reachable pill (the kit badge has no button form)
+            AinkradBadge(text: "↗ Forge", tint: theme.accentSecondary)
+                .fixedSize()
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focused($isFocused)
+        .opacity(shown ? 1 : 0)
+        .offset(x: shown || reduceMotion ? 0 : skin.size.s4)
+        .animation(reduceMotion ? nil : skin.animation(skin.motion.hover), value: shown)
+        .help("Open in Forge (or ⌘-click the row)")
+        .accessibilityLabel("Open in Forge")
     }
 }
 
@@ -134,15 +137,17 @@ enum ForgeTarget {
     }
 }
 
-/// A header's "↗ Forge": inserted while the header is hovered, so at rest the header lays out as before.
+/// A header's "↗ Forge": shown while the header is hovered or the pill has keyboard focus. It keeps its place at
+/// rest (GD28: a pill that isn't there can't be tabbed to), so the header no longer shifts on hover either.
 struct ForgeHeaderPill: View {
     let isHovered: Bool
     let action: (() -> Void)?
     @Environment(\.revealsForgePills) private var reveals
 
     var body: some View {
-        if let action, isHovered || reveals {
-            ForgePill(isVisible: true, action: action).transition(.opacity.combined(with: .offset(x: 4)))
+        if let action {
+            // Takes width, not height: the badge is taller than the header's text, and the header stays its height.
+            ForgePill(isVisible: isHovered || reveals, action: action).frame(height: 0)
         }
     }
 }

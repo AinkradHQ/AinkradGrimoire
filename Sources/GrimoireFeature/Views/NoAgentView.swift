@@ -10,6 +10,7 @@ struct NoAgentView: View {
     let searched: String
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
+    @State private var isNarrow = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s14) {
@@ -40,17 +41,23 @@ struct NoAgentView: View {
                     ForEach(Self.folders(searched), id: \.self) { AinkradChip(label: $0) }
                 }
             }
-            HStack(spacing: skin.size.s8) {
-                AinkradButton(title: "Choose a binary…", style: .secondary) { model.isShowingSettings = true }
-                    .fixedSize()
-                AinkradButton(title: "Check again", style: .primary) { Task { await model.reload() } }
-                    .fixedSize()
-            }
+            // Narrow (GD26), the buttons wrap rather than run off the edge.
+            FlowLayout(spacing: skin.size.s8) { buttons }
         }
         .frame(maxWidth: skin.size.s640, alignment: .leading)
-        .padding(.horizontal, skin.size.s48)
+        // The mockup's 48 pt sides where there is room; 20 in a narrow window (GD26).
+        .padding(.horizontal, isNarrow ? skin.size.s20 : skin.size.s48)
         .padding(.vertical, skin.size.s24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onGeometryChange(for: Bool.self) { $0.size.width < skin.size.s440 } action: { isNarrow = $0 }
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
+        AinkradButton(title: "Choose a binary…", style: .secondary) { model.isShowingSettings = true }
+            .fixedSize()
+        AinkradButton(title: "Check again", style: .primary) { Task { await model.reload() } }
+            .fixedSize()
     }
 
     /// Only commands known to be right; agy has no package-manager install to point at.
@@ -92,7 +99,9 @@ private struct InstallRow: View {
                     .textSelection(.enabled)
                     .fixedSize()
             }
-            AinkradIconButton(systemName: copied ? "checkmark" : "doc.on.doc", tooltip: "Copy") { copy() }
+            // "Copy", flipping to "✓ Copied" for 1.5 s (mockup 12 A).
+            AinkradButton(title: copied ? "Copied" : "Copy", style: .ghost, icon: copied ? "checkmark" : nil) { copy() }
+                .fixedSize()
                 .opacity(isHovering || copied ? 1 : skin.opacity.o55)
         }
         .padding(.leading, skin.size.s12)
@@ -113,8 +122,8 @@ private struct InstallRow: View {
     }
 }
 
-/// Lays its children out in rows, wrapping only between them.
-private struct FlowLayout: Layout {
+/// Lays its children out in rows, wrapping only between them; each centred in its row's height.
+struct FlowLayout: Layout {
     let spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
@@ -123,28 +132,33 @@ private struct FlowLayout: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         for (subview, point) in zip(subviews, arrange(width: bounds.width, subviews).points) {
-            subview.place(at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y), proposal: .unspecified)
+            subview.place(
+                at: CGPoint(x: bounds.minX + point.x, y: bounds.minY + point.y), anchor: .leading, proposal: .unspecified)
         }
     }
 
+    /// Each subview's leading-centre point.
     private func arrange(width: CGFloat, _ subviews: Subviews) -> (points: [CGPoint], size: CGSize) {
-        var points: [CGPoint] = []
+        var rows: [[(x: CGFloat, height: CGFloat)]] = [[]]
         var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
         var widest: CGFloat = 0
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
             if x > 0, x + size.width > width {
+                rows.append([])
                 x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
             }
-            points.append(CGPoint(x: x, y: y))
+            rows[rows.count - 1].append((x, size.height))
             x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
             widest = max(widest, x - spacing)
         }
-        return (points, CGSize(width: widest, height: y + rowHeight))
+        var points: [CGPoint] = []
+        var y: CGFloat = 0
+        for row in rows where !row.isEmpty {
+            let height = row.map(\.height).max() ?? 0
+            points += row.map { CGPoint(x: $0.x, y: y + height / 2) }
+            y += height + spacing
+        }
+        return (points, CGSize(width: widest, height: max(y - spacing, 0)))
     }
 }

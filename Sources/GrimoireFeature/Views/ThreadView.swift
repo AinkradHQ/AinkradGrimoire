@@ -9,32 +9,41 @@ struct ThreadView: View {
     let thread: ClaudeSessionSummary
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradToastCenter) private var toasts
+    @Environment(\.reviewReplacesThread) private var reviewReplacesThread
 
     var body: some View {
+        let review = model.isReviewOpen ? model.review(for: thread) : nil
         HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                ThreadHeader(thread: thread, model: model.current?.model) {
-                    actions
+            // Too narrow for both (GD26): the review pane stands in for the thread until it is closed.
+            if review == nil || !reviewReplacesThread { conversation }
+            if let review {
+                ReviewPane(review: review, fills: reviewReplacesThread, reviewInForge: { model.reviewInForge(thread) }) {
+                    model.isReviewOpen = false
                 }
-                if let live = model.current {
-                    ConversationView(live: live, workingDirectory: thread.workingDirectory) {
-                        EngineStateRows(model: model, thread: thread, live: live)
-                    }
-                    ThreadFooter(
-                        live: live, model: model, workingDirectory: thread.workingDirectory, harness: thread.harness)
-                } else {
-                    AinkradLoadingState(label: "Opening the thread…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            }
-            if model.isReviewOpen, let review = model.review(for: thread) {
-                ReviewPane(review: review, reviewInForge: { model.reviewInForge(thread) }) { model.isReviewOpen = false }
             }
         }
         // Every file:line the thread shows opens in Forge (E5).
         .environment(\.forgeOpener, ForgeOpener(model: model, directory: thread.workingDirectory))
         .onChange(of: model.terminalProblem) { _, problem in
             if let problem { toasts.show(problem, status: .warning) }
+        }
+    }
+
+    private var conversation: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ThreadHeader(thread: thread, model: model.current?.model) {
+                actions
+            }
+            if let live = model.current {
+                ConversationView(live: live, workingDirectory: thread.workingDirectory) {
+                    EngineStateRows(model: model, thread: thread, live: live)
+                }
+                ThreadFooter(
+                    live: live, model: model, workingDirectory: thread.workingDirectory, harness: thread.harness)
+            } else {
+                AinkradLoadingState(label: "Opening the thread…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
     }
 
@@ -304,13 +313,20 @@ private struct ToolCard: View {
         .overlay(skin.shape(cut: AinkradRadius.md).stroke(stroke, lineWidth: 1))
     }
 
+    /// The expander, then "↗ Forge" beside it rather than inside it, so each is its own keyboard stop (GD28).
     private var header: some View {
-        Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
-            isExpanded.toggle()
-        } label: {
-            headerLabel
+        HStack(spacing: skin.size.s8) {
+            Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
+                isExpanded.toggle()
+            } label: {
+                headerLabel
+            }
+            .buttonStyle(.plain)
+            ForgeHeaderPill(isHovered: hovering, action: ForgeTarget.action(for: call, opener: opener))
+            resultLabel
+                .contentShape(Rectangle())
+                .onTapGesture { isExpanded.toggle() }
         }
-        .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .animation(reduceMotion ? nil : skin.animation(skin.motion.hover), value: hovering)
     }
@@ -321,17 +337,19 @@ private struct ToolCard: View {
             Text(call.name)
                 .font(skin.font(AinkradFontToken(sizeKey: "t13", weight: "semibold")))
                 .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+                .fixedSize()  // never "Re ad" (GD26): the argument gives way instead
             Text(ToolSummary.argument(name: call.name, input: call.input, workingDirectory: workingDirectory))
                 .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
                 .foregroundStyle(skin.color(skin.text.muted))
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: skin.size.s8)
-            ForgeHeaderPill(isHovered: hovering, action: ForgeTarget.action(for: call, opener: opener))
-            Text(
-                isWaiting
-                    ? "waiting for you" : ToolSummary.result(name: call.name, input: call.input, output: call.result)
-            )
+        }
+        .contentShape(Rectangle())
+    }
+
+    private var resultLabel: some View {
+        Text(isWaiting ? "waiting for you" : ToolSummary.result(name: call.name, input: call.input, output: call.result))
             .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
             .foregroundStyle(
                 isWaiting
@@ -339,8 +357,6 @@ private struct ToolCard: View {
                     : call.result?.isError == true ? statusColors.danger : skin.color(skin.text.faint)
             )
             .lineLimit(1)
-        }
-        .contentShape(Rectangle())
     }
 
     private var detail: AnyView? {

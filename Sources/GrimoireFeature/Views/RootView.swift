@@ -10,10 +10,7 @@ struct RootView: View {
     var takeLaunch: () -> String? = { nil }
 
     var body: some View {
-        HStack(spacing: 0) {
-            Sidebar(model: model)
-            MainPane(model: model)
-        }
+        Columns(model: model)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.tokens.background)
         .foregroundStyle(theme.tokens.foreground)
