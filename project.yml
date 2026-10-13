@@ -27,7 +27,8 @@ packages:
     # a8c1fd7: kit parity batch 3 (#115) for the Forge/Grimoire mockups.
     # a352acd: kit parity batches 3+4 (#115, #116) for the Forge/Grimoire mockups.
     # dbc2b5e: kit parity batch 5 (#117) for the Forge mockups; additive, abi-check clean.
-    revision: dbc2b5eb7dce936861e470084b9cde05070d3607
+    # 20fb3db: kit parity batch 6 (#118) for the Forge mockups; additive, abi-check clean.
+    revision: 20fb3db9f278b3e73f195c3bfb5c321084db3053
 targets:
   GrimoireFeature:
     type: library.static
