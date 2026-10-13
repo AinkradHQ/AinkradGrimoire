@@ -24,6 +24,9 @@ enum Snapshot {
     /// The view in an off-screen window, settled: tasks and `onAppear` work run
     /// on the main queue for `settle` before the window lays out again.
     static func host(_ view: some View, size: CGSize, settle: TimeInterval = 0.3) -> (NSWindow, NSView) {
+        // The goldens draw mono text in JetBrains Mono, which only the host registers: without it they depend on
+        // whether the glass sweep happened to run first in the same process.
+        _ = registeredFonts
         let content =
             view
             .frame(width: size.width, height: size.height)
@@ -44,6 +47,8 @@ enum Snapshot {
         settleLayout(hosting, for: settle)
         return (window, hosting)
     }
+
+    private static let registeredFonts: Void = GlassSweepTests.registerHostFonts()
 
     static func settleLayout(_ view: NSView, for interval: TimeInterval) {
         view.layoutSubtreeIfNeeded()
