@@ -119,7 +119,8 @@ struct ClaudeProtocol {
                         model: message["model"]?.stringValue ?? "",
                         permissionMode: message["permissionMode"]?.stringValue.flatMap(PermissionMode.init(rawValue:)),
                         workingDirectory: message["cwd"]?.stringValue ?? "",
-                        tools: message["tools"]?.arrayValue?.compactMap(\.stringValue) ?? []))
+                        tools: message["tools"]?.arrayValue?.compactMap(\.stringValue) ?? [],
+                        skills: (message["skills"]?.arrayValue ?? []).compactMap { $0.stringValue ?? $0["name"]?.stringValue }))
             ]
         case "status":
             return [.status(message["status"]?.stringValue ?? "")]
@@ -163,7 +164,10 @@ struct ClaudeProtocol {
 
     private static func assistant(_ message: JSONValue) -> [EngineEvent] {
         let messageID = message["message"]?["id"]?.stringValue ?? ""
-        return blocks(of: message["message"]).map { .block(messageID: messageID, $0) }
+        let tokens = message["message"]?["usage"]?["output_tokens"]?.doubleValue.map {
+            EngineEvent.tokens(messageID: messageID, output: Int($0))
+        }
+        return blocks(of: message["message"]).map { .block(messageID: messageID, $0) } + (tokens.map { [$0] } ?? [])
     }
 
     /// An assistant message's content blocks. Shared with stored sessions,
@@ -247,6 +251,7 @@ struct ClaudeProtocol {
         return .turnFinished(
             TurnResult(
                 outcome: outcome, sessionID: message["session_id"]?.stringValue ?? "",
-                costUSD: message["total_cost_usd"]?.doubleValue, text: message["result"]?.stringValue))
+                costUSD: message["total_cost_usd"]?.doubleValue, text: message["result"]?.stringValue,
+                outputTokens: message["usage"]?["output_tokens"]?.doubleValue.map { Int($0) }))
     }
 }

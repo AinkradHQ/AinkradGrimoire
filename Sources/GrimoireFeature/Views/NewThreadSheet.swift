@@ -1,4 +1,5 @@
 import AinkradAppKit
+import AppKit
 import SwiftUI
 
 /// Starts an agent session in a project. The thread also lands in the CLI's
@@ -15,8 +16,10 @@ struct NewThreadSheet: View {
     @State private var worktree: Bool
     @State private var harness: Harness
     @State private var prompt = ""
+    @State private var copiedInstall = false
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradTypography) private var typography
 
     init(model: GrimoireModel, dismiss: @escaping () -> Void) {
         self.model = model
@@ -43,12 +46,29 @@ struct NewThreadSheet: View {
             }
 
             row("Agent") {
+                // Every agent (mockup 7); one that isn't installed says so and offers its install command.
                 HStack(spacing: skin.size.s8) {
-                    AinkradSegmentedPicker(items: Self.installed(model), selection: $harness) { $0.displayName }
-                        .fixedSize()
-                    Text(harness == .agy ? "agy runs tools per its own permission setting" : "")
-                        .font(skin.font(AinkradFontToken(sizeKey: "t11")))
-                        .foregroundStyle(skin.color(skin.text.faint))
+                    AinkradSegmentedPicker(items: Harness.allCases, selection: $harness) {
+                        $0 == .claude ? "Claude Code" : $0.displayName
+                    }
+                    .fixedSize()
+                    if !isInstalled {
+                        Text("Not installed").font(skin.font(AinkradFontToken(sizeKey: "t11")))
+                            .foregroundStyle(skin.color(skin.text.faint))
+                        if let command = NoAgentView.installCommand(harness) {
+                            AinkradButton(title: copiedInstall ? "Copied" : "Install…", style: .ghost) {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(command, forType: .string)
+                                copiedInstall = true
+                            }
+                            .borderless().secondaryAccent().fixedSize()
+                            .help(command)
+                        }
+                    } else if harness == .agy {
+                        Text("agy runs tools per its own permission setting")
+                            .font(skin.font(AinkradFontToken(sizeKey: "t11")))
+                            .foregroundStyle(skin.color(skin.text.faint))
+                    }
                 }
             }
             row("Project") { projectMenu }
@@ -79,9 +99,10 @@ struct NewThreadSheet: View {
 
             HStack(spacing: skin.size.s8) {
                 Spacer(minLength: 0)
-                AinkradButton(title: "Cancel", style: .ghost, action: dismiss).fixedSize()
-                AinkradButton(title: "Start", style: .primary, icon: "arrow.up", action: start)
+                AinkradButton(title: "Cancel", style: .ghost, action: dismiss).borderless().secondaryAccent().fixedSize()
+                AinkradButton(title: "Start ⌘↵", style: .primary, action: start)
                     .fixedSize()
+                    .keyboardShortcut(.return, modifiers: .command)
                     .disabled(!canStart)
             }
         }
@@ -89,6 +110,7 @@ struct NewThreadSheet: View {
         .onChange(of: harness) {
             if !canUseWorktree { worktree = false }
             otherModel = nil
+            copiedInstall = false
         }
     }
 
@@ -97,7 +119,7 @@ struct NewThreadSheet: View {
             Text(skin.labelCased(label))
                 .font(skin.font(AinkradFontToken(sizeKey: "t10", weight: "semibold")))
                 .foregroundStyle(skin.color(skin.text.muted))
-                .frame(width: skin.size.s104, alignment: .leading)
+                .frame(width: skin.size.s120 + skin.size.s10, alignment: .leading)
             content()
             Spacer(minLength: 0)
         }
@@ -111,13 +133,22 @@ struct NewThreadSheet: View {
                 }
             }
         ) {
+            // Full width: the name, then where it is (mockup 7: "Ainkrad   ~/…/Repositories/Ainkrad ▾").
             PullDownLabel {
-                Text(project.isEmpty ? "Choose a project" : (project as NSString).lastPathComponent)
-                    .font(skin.font(AinkradFontToken(sizeKey: "t12")))
-                    .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+                HStack(spacing: skin.size.s8) {
+                    Text(project.isEmpty ? "Choose a project" : (project as NSString).lastPathComponent)
+                        .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+                        .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+                    Spacer(minLength: skin.size.s8)
+                    Text(Self.shortPath(project))
+                        .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                        .foregroundStyle(skin.color(skin.text.faint))
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
             }
         }
-        .fixedSize()
+        .frame(maxWidth: .infinity)
         .help(project)
     }
 
@@ -143,6 +174,17 @@ struct NewThreadSheet: View {
         FileManager.default.fileExists(atPath: (project as NSString).appendingPathComponent(".git"))
     }
 
+    /// `~/Home/Projects/Ainkrad/Repositories/Ainkrad` → `~/…/Repositories/Ainkrad`; short paths unchanged.
+    static func shortPath(_ path: String) -> String {
+        let parts = (path as NSString).abbreviatingWithTildeInPath.split(separator: "/", omittingEmptySubsequences: false)
+        guard parts.count > 4 else { return (path as NSString).abbreviatingWithTildeInPath }
+        return ([parts[0], "…"] + parts.suffix(2)).joined(separator: "/")
+    }
+
+    private var isInstalled: Bool {
+        if case .found = model.status(of: harness) { true } else { false }
+    }
+
     /// The agents whose CLI was found; Claude when none is, so the sheet still lays out.
     static func installed(_ model: GrimoireModel) -> [Harness] {
         let found = Harness.allCases.filter {
@@ -160,7 +202,7 @@ struct NewThreadSheet: View {
     }
 
     private var canStart: Bool {
-        !project.isEmpty && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        isInstalled && !project.isEmpty && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func start() {

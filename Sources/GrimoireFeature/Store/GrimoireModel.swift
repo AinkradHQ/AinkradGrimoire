@@ -84,7 +84,7 @@ final class GrimoireModel {
     let apps: PluginAppLauncher?
     /// Why the last "open in Rune" didn't happen; cleared on the next try.
     private(set) var terminalProblem: String?
-    private let sessionsRoot: URL
+    let sessionsRoot: URL
     typealias Lister = @Sendable ([String: String]) async -> AgentListing
     /// Finds each non-Claude CLI and lists its threads; a harness without one
     /// counts as missing. Tests hand in fixtures.
@@ -357,6 +357,7 @@ final class GrimoireModel {
         let live = LiveThread(
             entries: entries, startOptions: options, model: model, clock: { [weak self] in self?.now() ?? Date() },
             makeEngine: { [weak self] in self?.makeEngine(harness) ?? UnavailableEngine() })
+        live.agentName = harness.displayName
         live.onUsage = { [weak self] windows in self?.usage[harness] = windows }
         live.onUsageLimit = { [weak self] hint in self?.markLimited(harness, resetHint: hint) }
         live.onNeedsYou = { [weak self, weak live] request in

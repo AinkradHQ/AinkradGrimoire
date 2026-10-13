@@ -9,6 +9,8 @@ enum ThreadEntry: Equatable, Sendable {
     case thinking(String)
     case tool(ToolCall)
     case plan([PlanStep])
+    /// Grimoire's own quiet line in the transcript (the agent did not answer).
+    case note(String)
 }
 
 struct ToolCall: Equatable, Sendable {
@@ -19,6 +21,8 @@ struct ToolCall: Equatable, Sendable {
     var result: ToolOutput?
     /// The command the agent wrote, when a hook rewrote it before it ran; `input` then holds what runs.
     var rewrittenFrom: String? = nil
+    /// How long it ran, when this run saw it start and finish.
+    var duration: TimeInterval? = nil
 }
 
 struct ToolOutput: Equatable, Sendable {
@@ -87,7 +91,15 @@ enum ToolSummary {
         }
         switch name {
         case "Bash": return input["command"]?.stringValue ?? ""
-        case "Read", "Edit", "Write", "MultiEdit", "NotebookEdit", "Update":
+        case "Read":
+            // The file's name, and the range read when it is one (mockup 11: "SidebarRow.swift · lines 40–80").
+            let name = input["file_path"]?.stringValue.map { ($0 as NSString).lastPathComponent } ?? ""
+            guard let offset = input["offset"]?.doubleValue.map({ Int($0) }) else { return name }
+            guard let limit = input["limit"]?.doubleValue.map({ Int($0) }), limit > 0 else {
+                return "\(name) · from line \(offset)"
+            }
+            return "\(name) · lines \(offset)–\(offset + limit - 1)"
+        case "Edit", "Write", "MultiEdit", "NotebookEdit", "Update":
             return path("file_path") ?? path("notebook_path") ?? ""
         case "Grep":
             let pattern = input["pattern"]?.stringValue.map { "\"\($0)\"" } ?? ""
@@ -138,6 +150,17 @@ enum ToolSummary {
         default:
             return ""
         }
+    }
+
+    /// An edit's added and removed lines; nil for any other tool.
+    static func counts(name: String, input: JSONValue) -> (added: Int, removed: Int)? {
+        let lines: [AinkradDiffLine]
+        switch name {
+        case "Edit", "MultiEdit": lines = editDiff(input).hunks.flatMap(\.lines)
+        case "Patch": lines = ReviewChanges.patchChanges(input).compactMap(\.diff).flatMap(\.hunks).flatMap(\.lines)
+        default: return nil
+        }
+        return (lines.filter { $0.kind == .insertion }.count, lines.filter { $0.kind == .deletion }.count)
     }
 
     /// An `Edit` input (`old_string` → `new_string`) as a line diff.

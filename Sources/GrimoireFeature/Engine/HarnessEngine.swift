@@ -75,6 +75,8 @@ public struct SessionInfo: Sendable, Equatable {
     public var permissionMode: PermissionMode?
     public var workingDirectory: String
     public var tools: [String]
+    /// The session's skills (Claude's init lists them), so `/` can group them apart from commands.
+    public var skills: [String] = []
 }
 
 /// One finished piece of an assistant message.
@@ -114,6 +116,8 @@ public struct TurnResult: Sendable, Equatable {
     public var sessionID: String
     public var costUSD: Double?
     public var text: String?
+    /// The tokens the agent wrote this turn, when its CLI reports them (Claude does).
+    public var outputTokens: Int?
 }
 
 public struct UsageWindow: Sendable, Equatable {
@@ -138,6 +142,8 @@ public enum EngineEvent: Sendable, Equatable {
     /// "requesting", "thinking", … — a status line, not content.
     case status(String)
     case turnFinished(TurnResult)
+    /// The tokens assistant message `messageID` has written so far, when the CLI reports them (Claude does).
+    case tokens(messageID: String, output: Int)
     /// How much of each rate-limit window is used.
     case usage([UsageWindow])
     /// Something the CLI printed that could not be understood, or a crash.

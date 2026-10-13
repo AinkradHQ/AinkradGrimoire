@@ -27,7 +27,7 @@ struct ThreadFooter: View {
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            StatusLine(live: live, isLimited: limit != nil)
+            StatusLine(live: live, isLimited: limit != nil, harness: harness)
             AinkradComposer(
                 text: Bindable(live).draft,
                 placeholder: "Message \(harness.displayName)… (/ for commands, @ for files)", isEditable: true,
@@ -51,14 +51,18 @@ struct ThreadFooter: View {
                 if let at = live.sendAt {
                     queued(at)
                 }
-                if live.canInterrupt {
+                // The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
+                if live.canInterrupt, live.pendingApproval == nil {
                     AinkradButton(title: "Stop", style: .danger, icon: "stop.fill") { live.interrupt() }
                         .fixedSize()
                         .help("Stop (⌘.)")
                 }
             }
+            .paletteSuggestionRows()
             // ⌘L: a fresh editor autofocuses — the kit's composer has no other focus hook. The draft is kept.
             .id(model.composerFocusRequest)
+            // Waiting on the limit's reset, the composer steps back (mockup 12 D).
+            .opacity(limit != nil ? skin.opacity.o60 : 1)
             .padding(.horizontal, skin.size.s14)
             .padding(.bottom, skin.size.s14)
         }
@@ -106,14 +110,17 @@ struct ThreadFooter: View {
     private func suggestions(_ trigger: AinkradComposerTrigger) -> [AinkradComposerSuggestion] {
         switch trigger {
         case .command(let query):
-            return live.commands
-                .filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
-                .prefix(40)
-                .map {
-                    AinkradComposerSuggestion(
-                        id: $0.name, icon: "chevron.right.circle", title: "/\($0.name)", subtitle: $0.description,
-                        insertText: "/\($0.name)")
-                }
+            // Mockup 3: "Session" commands (›) then "Skills" (✦), when the CLI says which are skills.
+            let matches = live.commands.filter { query.isEmpty || $0.name.localizedCaseInsensitiveContains(query) }
+            let skills = live.skills
+            let grouped = matches.filter { !skills.contains($0.name) } + matches.filter { skills.contains($0.name) }
+            return grouped.prefix(40).map {
+                let isSkill = skills.contains($0.name)
+                return AinkradComposerSuggestion(
+                    id: $0.name, icon: isSkill ? "sparkle" : "chevron.forward", title: "/\($0.name)",
+                    subtitle: $0.description, section: skills.isEmpty ? nil : isSkill ? "Skills" : "Session",
+                    insertText: "/\($0.name)")
+            }
         case .mention(let query):
             return ProjectFiles.search(model.files(in: workingDirectory), query: query).map {
                 AinkradComposerSuggestion(
@@ -133,7 +140,7 @@ struct ThreadFooter: View {
                 }
             }
         ) {
-            PullDownLabel { MenuValue(caption: captions ? "Mode" : nil, value: live.mode.title) }
+            PullDownLabel(showsChevron: false) { MenuValue(caption: captions ? "Mode" : nil, value: live.mode.title) }
         }
         .fixedSize()
         .help("Permission mode")
@@ -171,7 +178,7 @@ struct ThreadFooter: View {
             }
         ) {
             PullDownLabel {
-                MenuValue(caption: captions ? "Model" : nil, value: live.model.map(ModelName.display) ?? "Default")
+                MenuValue(caption: captions ? "Model" : nil, value: live.model.map(ModelName.title) ?? "Default")
             }
         }
         .fixedSize()
@@ -220,27 +227,51 @@ private struct ApprovalBar: View {
     var body: some View {
         let argument = ToolSummary.argument(
             name: request.toolName, input: request.input, workingDirectory: workingDirectory)
+        // Mockup 4: a bare cyan Deny, Always allow named by the CLI's own rule, Allow once with its key.
         var actions: [AinkradDecisionBar.Action] = [
-            .init(title: "Deny", style: .ghost) { live.answer(.deny(reason: "Denied in Grimoire.")) }
+            AinkradDecisionBar.Action(title: "Deny", style: .ghost) { live.answer(.deny(reason: "Denied in Grimoire.")) }
+                .borderless().secondaryAccent()
         ]
         if live.canAllowAlways {
-            actions.append(.init(title: "Always allow", style: .secondary) { live.answer(.allowAlways) })
+            let rule = ApprovalBarRule.rule(request.suggestions).map { "Always allow \($0)" } ?? "Always allow"
+            actions.append(
+                AinkradDecisionBar.Action(title: rule, style: .secondary) { live.answer(.allowAlways) }.secondaryAccent())
         }
-        actions.append(.init(title: "Allow once", style: .primary) { live.answer(.allow) })
+        actions.append(.init(title: "Allow once ↵", style: .primary) { live.answer(.allow) })
         return AinkradDecisionBar(
-            icon: request.toolName == "Bash" ? "terminal" : "pencil", iconTint: .primary,
-            caption: "Approval required", title: "\(request.toolName) \(argument)", actions: actions)
+            icon: "bolt.horizontal", iconTint: .secondary, caption: "Approval required",
+            title: request.toolName == "Bash" ? "Run \(argument)" : "\(request.toolName) \(argument)", actions: actions
+        )
+        .labelCasedCaption()
     }
 }
 
-/// What the agent is doing right now, and for how long.
+enum ApprovalBarRule {
+    /// What "Always allow" adopts, in the CLI's words: Claude's rule (`git push:*` → `git push *`), or its mode
+    /// ("accept edits for this session"). Nil when the suggestion names neither (Codex, OpenCode).
+    static func rule(_ suggestions: [JSONValue]) -> String? {
+        for suggestion in suggestions {
+            if let content = suggestion["rules"]?.arrayValue?.first?["ruleContent"]?.stringValue {
+                return content.hasSuffix(":*") ? content.dropLast(2) + " *" : content
+            }
+            if suggestion["type"]?.stringValue == "setMode", suggestion["mode"]?.stringValue == "acceptEdits" {
+                return "accept edits for this session"
+            }
+        }
+        return nil
+    }
+}
+
+/// What the agent is doing right now, for how long and with how many tokens; then how the turn went (mockups 1, 2).
 private struct StatusLine: View {
     let live: LiveThread
     /// The limit bar says it; the line stays quiet.
     let isLimited: Bool
+    let harness: Harness
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
+    @Environment(\.ainkradTypography) private var typography
 
     var body: some View {
         if live.failure != nil || (isLimited && live.status != .working) {
@@ -265,40 +296,65 @@ private struct StatusLine: View {
     private var statusBody: some View {
         switch live.status {
         case .working:
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                line(dot: theme.accentSecondary, text: "Working…", detail: elapsed(at: context.date))
+            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                line(
+                    dot: theme.accentSecondary, text: live.activity.map { "\($0)…" } ?? "Working…",
+                    detail: Self.detail(live.turnElapsed, tokens: live.turnOutputTokens))
             }
         case .needsYou:
-            line(dot: statusColors.warning, text: "Waiting for your approval", detail: nil)
+            // The approval bar says it (mockup 4).
+            EmptyView()
         case .failed(let message):
             // An error can carry what to do next on a second line (E0 GD7): let it wrap.
             line(dot: statusColors.danger, text: message, detail: nil, lines: 3)
         case .idle:
-            if live.costUSD > 0 {
+            if let turn = live.lastTurn {
+                // Cost only where the agent reports it (Claude); tokens likewise.
                 line(
-                    dot: statusColors.success, text: "Done", detail: String(format: "$%.2f this session", live.costUSD))
+                    dot: statusColors.success, text: "Done in \(StatusTime.short(turn.duration))",
+                    detail: Self.detail(nil, tokens: turn.tokens, cost: live.costUSD).map { "· \($0)" })
             }
         }
     }
 
-    private func elapsed(at now: Date) -> String? {
-        guard let start = live.turnStartedAt else { return nil }
-        let seconds = Int(now.timeIntervalSince(start))
-        return seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
+    /// "1m 12s · 18.4k tokens · $0.42", leaving out what is not known.
+    static func detail(_ elapsed: TimeInterval?, tokens: Int?, cost: Double = 0) -> String? {
+        let parts = [
+            elapsed.map(StatusTime.short), tokens.map { "\(TokenCount.short($0)) tokens" },
+            cost > 0 ? String(format: "$%.2f", cost) : nil,
+        ].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
+
 
     private func line(dot: Color, text: String, detail: String?, lines: Int = 1) -> some View {
         HStack(spacing: skin.size.s8) {
             Circle().fill(dot).frame(width: skin.size.s7, height: skin.size.s7)
             Text(text).lineLimit(lines)
             if let detail {
-                Text(detail).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
+                Text(detail).font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
                     .foregroundStyle(skin.color(skin.text.faint))
+                    .lineLimit(1)
             }
         }
         .font(skin.font(AinkradFontToken(sizeKey: "t12")))
         .foregroundStyle(skin.color(skin.text.muted))
         .padding(.horizontal, skin.size.s20)
         .padding(.vertical, skin.size.s6)
+    }
+}
+
+/// "48s", "2m 40s".
+enum StatusTime {
+    static func short(_ seconds: TimeInterval) -> String {
+        let seconds = Int(seconds)
+        return seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
+    }
+}
+
+/// "31.2k" for 31 200; small counts as they are.
+enum TokenCount {
+    static func short(_ count: Int) -> String {
+        count < 1_000 ? "\(count)" : String(format: "%.1fk", Double(count) / 1_000)
     }
 }

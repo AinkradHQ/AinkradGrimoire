@@ -122,7 +122,7 @@ struct FailureCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s8) {
             HStack(spacing: skin.size.s8) {
-                Image(systemName: "xmark.octagon").foregroundStyle(statusColors.danger)
+                Text("⊗").foregroundStyle(statusColors.danger)
                 Text(failure.headline(harness))
                     .font(skin.font(AinkradFontToken(sizeKey: "t13", weight: "semibold")))
                     .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
@@ -138,19 +138,20 @@ struct FailureCard: View {
         }
         .padding(skin.size.s14)
         .frame(maxWidth: skin.size.s640, alignment: .leading)
-        .background(skin.shape(cut: AinkradRadius.md).fill(statusColors.danger.opacity(skin.opacity.o08)))
-        .overlay(skin.shape(cut: AinkradRadius.md).stroke(statusColors.danger.opacity(skin.opacity.o35), lineWidth: 1))
+        .cardSurface(statusColors.danger.opacity(skin.opacity.o08), rim: statusColors.danger.opacity(skin.opacity.o55))
     }
 
     @ViewBuilder
     private var buttons: some View {
-        AinkradButton(title: "Retry", style: .primary, icon: "arrow.clockwise", action: retry).fixedSize()
+        // Text only; Copy details a bare link (mockup 12 C).
+        AinkradButton(title: "Retry", style: .primary, action: retry).fixedSize()
         if failure.kind == .auth {
-            AinkradButton(title: "Open Terminal to log in", style: .secondary, icon: "terminal", action: openTerminal)
+            AinkradButton(title: "Open Terminal to log in", style: .secondary, action: openTerminal)
+                .secondaryAccent()
                 .fixedSize()
                 .help(EngineFailure.loginHint(harness))
         }
-        AinkradButton(title: copied ? "Copied" : "Copy details", style: .ghost, icon: copied ? "checkmark" : "doc.on.doc") {
+        AinkradButton(title: copied ? "✓ Copied" : "Copy details", style: .ghost) {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(failure.details(harness), forType: .string)
             copied = true
@@ -159,6 +160,7 @@ struct FailureCard: View {
                 copied = false
             }
         }
+        .borderless().secondaryAccent()
         .fixedSize()
     }
 
@@ -210,8 +212,7 @@ struct LimitBar: View {
         }
         .padding(.horizontal, skin.size.s14).padding(.vertical, skin.size.s9)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(skin.shape(cut: AinkradRadius.md).fill(statusColors.warning.opacity(skin.opacity.o10)))
-        .overlay(skin.shape(cut: AinkradRadius.md).stroke(statusColors.warning.opacity(skin.opacity.o45), lineWidth: 1))
+        .cardSurface(statusColors.warning.opacity(skin.opacity.o10), rim: statusColors.warning.opacity(skin.opacity.o55))
         .padding(.horizontal, skin.size.s14)
         .padding(.bottom, skin.spacing.xs)
     }
@@ -219,7 +220,7 @@ struct LimitBar: View {
     /// Wrapping when squeezed (GD26), rather than cutting the headline short.
     private func summary(wraps: Bool) -> some View {
         HStack(spacing: skin.size.s10) {
-            Image(systemName: "gauge.with.needle")
+            Text("◔")
                 .font(skin.font(AinkradFontToken(sizeKey: "t13", scaled: false)))
                 .foregroundStyle(statusColors.warning)
             VStack(alignment: .leading, spacing: skin.size.s1) {
@@ -227,9 +228,9 @@ struct LimitBar: View {
                     .font(AinkradFontResolver.font(size: 12, weight: .semibold, typography: typography))
                     .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
                 TimelineView(.everyMinute) { _ in
-                    Text(detail(now: now()))
+                    detail(now: now())
                         .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
-                        .foregroundStyle(skin.color(skin.text.muted))
+                        .foregroundStyle(skin.color(skin.text.faint))
                 }
             }
             .lineLimit(wraps ? nil : 1)
@@ -238,31 +239,27 @@ struct LimitBar: View {
     }
 
     private var meter: some View {
-        AinkradStatusBar(value: limit.utilization, kind: .status(.warning), segments: 8)
-            .frame(width: skin.size.s60)
+        UsageMeter(value: limit.utilization, tint: statusColors.warning).frame(width: skin.size.s120)
     }
 
     @ViewBuilder
     private var buttons: some View {
         if let sendAtReset {
-            AinkradButton(title: "Send at reset", style: .secondary, icon: "clock", action: sendAtReset).fixedSize()
+            AinkradButton(title: "Send at reset", style: .secondary, action: sendAtReset).secondaryAccent().fixedSize()
         }
         if let alternative {
             AinkradButton(title: "New thread with \(alternative.displayName)", style: .ghost, action: carryOver)
+                .borderless().secondaryAccent()
                 .fixedSize()
         }
     }
 
-    /// "Resets at 15:00 — in 1 h 12 min · 5-hour window".
-    private func detail(now: Date) -> String {
-        var parts: [String] = []
-        if let reset = limit.resetsAt {
-            parts.append("Resets at \(UsageLimit.clock(reset)) — \(UsageLimit.countdown(to: reset, now: now))")
-        } else {
-            parts.append("Reset time not reported")
-        }
-        if let window = limit.window { parts.append("\(window) window") }
-        return parts.joined(separator: " · ")
+    /// "Resets at **15:00** — in 1 h 12 min · 5-hour window", the time bold (12 D). No plan name: none is reported.
+    private func detail(now: Date) -> Text {
+        let window = limit.window.map { " · \($0) window" } ?? ""
+        guard let reset = limit.resetsAt else { return Text("Reset time not reported" + window) }
+        let time = Text(UsageLimit.clock(reset)).fontWeight(.bold).foregroundStyle(theme.foreground)
+        return Text("Resets at ") + time + Text(" — \(UsageLimit.countdown(to: reset, now: now))" + window)
     }
 }
 

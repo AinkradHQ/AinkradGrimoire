@@ -168,7 +168,7 @@ struct EngineStatesTests {
         #expect(live.hitLimit)
         #expect(live.failure == nil, "the limit bar shows it, not the card")
         #expect(live.draft == "Now screenshot both themes")
-        #expect(live.entries == [.user("Now screenshot both themes"), .text("*\(LiveThread.limitNote)*")])
+        #expect(live.entries == [.user("Now screenshot both themes"), .note(LiveThread.limitNote("The agent"))])
         #expect(hints == [Date(timeIntervalSince1970: 1_791_704_320)])
     }
 
@@ -229,5 +229,41 @@ struct EngineStatesTests {
         #expect(codex.projectPath == "/repo")
         #expect(engines.last?.sent == ["Screenshot both themes"])
         #expect(live.draft.isEmpty)
+    }
+}
+
+/// The status line's facts (mockups 1, 2): what runs, for how long, and the tokens the CLI reports.
+@MainActor
+@Suite("Turn facts")
+struct TurnFactsTests {
+    final class Clock { var now = Date(timeIntervalSince1970: 1_791_700_000) }
+
+    @Test func workingThenDone() {
+        let clock = Clock()
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/tmp")),
+            clock: { clock.now }, makeEngine: { FakeEngine() })
+        live.send("Run the goldens")
+        live.apply(.block(messageID: "m1", .toolUse(id: "b", name: "Bash", input: ["command": "make test", "description": "Running goldens"])))
+        live.apply(.tokens(messageID: "m1", output: 900))
+        live.apply(.tokens(messageID: "m1", output: 1_200))
+        live.apply(.tokens(messageID: "m2", output: 300))
+        clock.now += 48
+        #expect(live.activity == "Running goldens")
+        #expect(live.turnOutputTokens == 1_500)
+        #expect(live.turnElapsed == 48)
+        live.apply(.toolResult(toolUseID: "b", content: "ok", isError: false))
+        guard case .tool(let call) = live.entries.last else {
+            Issue.record("no tool card")
+            return
+        }
+        #expect(call.duration == 48)
+        #expect(live.activity == nil)
+        clock.now += 112
+        live.apply(.turnFinished(TurnResult(outcome: .success, sessionID: "s", outputTokens: 31_200)))
+        #expect(live.lastTurn?.duration == 160)
+        #expect(live.lastTurn?.tokens == 31_200)
+        #expect(TokenCount.short(31_200) == "31.2k")
+        #expect(StatusTime.short(160) == "2m 40s")
     }
 }

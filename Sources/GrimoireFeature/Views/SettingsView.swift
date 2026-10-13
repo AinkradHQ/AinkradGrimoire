@@ -14,47 +14,31 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Settings")
-                    .font(skin.font(AinkradFontToken(sizeKey: "t15", weight: "semibold")))
-                    .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
-                Spacer()
-                AinkradIconButton(systemName: "xmark", size: skin.size.s26, tooltip: "Close") {
-                    model.isShowingSettings = false
-                }
-            }
-            .padding(.horizontal, skin.size.s20)
-            .padding(.top, skin.size.s14)
-            .padding(.bottom, skin.size.s10)
+            // Title only (mockup 8): the gear and any thread take you back.
+            Text("Settings")
+                .font(skin.font(AinkradFontToken(sizeKey: "t15", weight: "semibold")))
+                .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
+                .padding(.horizontal, skin.size.s20)
+                .padding(.top, skin.size.s14)
+                .padding(.bottom, skin.size.s10)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: skin.size.s16) {
+                VStack(alignment: .leading, spacing: skin.size.s18) {
                     group("Agents") {
-                        agentRow(badge: "Claude", tint: HarnessBadge.claudeTint, detail: detail(model.cli)) {
-                            AinkradButton(title: "Change…", style: .secondary) { chooseCLI() }.fixedSize()
+                        agentRow(.claude, detail: detail(model.cli) + (config.isSignedIn ? " · signed in" : "")) {
+                            AinkradButton(title: "Change…", style: .secondary) { chooseCLI() }.secondaryAccent().fixedSize()
                         }
-                        agentRow(badge: "Codex", tint: theme.foreground, detail: detail(model.status(of: .codex))) {
-                            EmptyView()
-                        }
-                        agentRow(badge: "OpenCode", tint: theme.accentTertiary, detail: detail(model.status(of: .opencode))) {
-                            EmptyView()
-                        }
-                        agentRow(
-                            badge: "agy", tint: theme.accentPrimary,
-                            detail: detail(model.status(of: .agy)) + " · approvals follow agy's own setting") {
-                            EmptyView()
+                        agentRow(.codex, detail: detail(model.status(of: .codex))) { none }
+                        agentRow(.opencode, detail: detail(model.status(of: .opencode))) { none }
+                        agentRow(.agy, detail: detail(model.status(of: .agy)) + " · approvals follow agy's own setting") {
+                            none
                         }
                     }
                     group("New threads") {
-                        row("Default model") {
-                            FittingPicker(
-                                items: ["opus", "sonnet", "haiku"],
-                                selection: Binding(get: { settings.defaultModel }, set: { settings.defaultModel = $0 })
-                            ) { $0.capitalized }
-                        }
+                        row("Default model") { defaultModelMenu }
                         row("Default mode") {
                             FittingPicker(
-                                items: PermissionMode.allCases,
+                                items: [.ask, .acceptEdits, .plan],
                                 selection: Binding(get: { settings.defaultMode }, set: { settings.defaultMode = $0 })
                             ) { $0.title }
                         }
@@ -75,35 +59,60 @@ struct SettingsView: View {
                                 .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                                 .foregroundStyle(skin.color(skin.text.muted))
                         }
-                        ForEach(usageRows, id: \.id) { harness, window, _ in
-                            row("\(harness.displayName) · \(window.name) window") {
-                                HStack(spacing: skin.size.s10) {
-                                    AinkradStatusBar(value: window.utilization)
-                                        .frame(minWidth: skin.size.s80, maxWidth: skin.size.s240)
-                                    Text(usageDetail(window))
-                                        .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
-                                        .foregroundStyle(skin.color(skin.text.faint))
-                                        .fixedSize()
-                                }
+                        let rows = usageRows
+                        let agents = Set(rows.map(\.harness)).count
+                        ForEach(rows, id: \.id) { harness, window, _ in
+                            // The agent's name only when more than one reports windows.
+                            row(agents > 1 ? "\(harness.displayName) · \(window.name) window" : "\(window.name) window") {
+                                UsageMeter(value: window.utilization, tint: theme.accentSecondary)
+                            } trailing: {
+                                Text(usageDetail(window))
+                                    .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                                    .foregroundStyle(skin.color(skin.text.faint))
+                                    .fixedSize()
                             }
                         }
                     }
-                    group("MCP servers, hooks & skills") {
-                        row("Claude Code's own files") {
-                            FlowLayout(spacing: skin.size.s8) { claudeFileButtons }
+                    group("MCP servers & hooks") {
+                        row("From ~/.claude") {
+                            Text(config.summary)
+                                .font(skin.font(AinkradFontToken(sizeKey: "t13")))
+                                .foregroundStyle(skin.color(skin.text.muted))
+                                .lineLimit(1)
+                        } trailing: {
+                            AinkradButton(title: "Open settings.json", style: .secondary) { open(".claude/settings.json") }
+                                .secondaryAccent()
+                                .fixedSize()
                         }
                     }
                 }
-                .padding(.horizontal, skin.size.s20)
-                .padding(.bottom, skin.size.s20)
+                .padding(.horizontal, skin.size.s28)
+                .padding(.top, skin.size.s8)
+                .padding(.bottom, skin.size.s28)
             }
         }
+        .task { config = ClaudeConfig.read(claudeHome: model.sessionsRoot.deletingLastPathComponent()) }
     }
 
-    @ViewBuilder
-    private var claudeFileButtons: some View {
-        AinkradButton(title: "Open settings.json", style: .secondary) { open(".claude/settings.json") }.fixedSize()
-        AinkradButton(title: "Open ~/.claude", style: .ghost) { open(".claude") }.fixedSize()
+    @State private var config = ClaudeConfig()
+
+    private var none: some View {
+        Text("—").foregroundStyle(skin.color(skin.text.faint))
+    }
+
+    /// "Opus ▾": a pull-down, as the composer's Model (mockup 8).
+    private var defaultModelMenu: some View {
+        AinkradMenuButton(
+            items: ["opus", "sonnet", "haiku"].map { alias in
+                AinkradMenuItem(title: alias.capitalized, systemName: alias == settings.defaultModel ? "checkmark" : nil) {
+                    settings.defaultModel = alias
+                }
+            }
+        ) {
+            PullDownLabel { MenuValue(caption: nil, value: settings.defaultModel.capitalized) }
+        }
+        .fixedSize()
+        .help("Default model")
     }
 
     private func detail(_ status: CLIStatus) -> String {
@@ -132,39 +141,48 @@ struct SettingsView: View {
     }
 
     private func group(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: skin.size.s10) {
+        VStack(alignment: .leading, spacing: 0) {
             Text(skin.labelCased(title))
                 .font(skin.font(AinkradFontToken(sizeKey: "t10", weight: "semibold")))
                 .foregroundStyle(skin.color(skin.text.muted))
+                .padding(.bottom, skin.size.s2)
             content()
         }
-        .padding(skin.size.s16)
+        .padding(.horizontal, skin.size.s16)
+        .padding(.vertical, skin.size.s14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(skin.shape(cut: AinkradRadius.md).fill(theme.surface.opacity(skin.opacity.o60)))
+        .cardSurface(theme.surface.opacity(skin.opacity.o75))
     }
 
-    /// Label and control side by side; the control under its label when the pane is too narrow for both (GD16).
-    private func row(_ label: String, @ViewBuilder content: () -> some View) -> some View {
+    /// Mockup `.srow`: a 170 pt label, the control, then anything trailing; the control goes under its label when
+    /// the pane is too narrow for both (GD16).
+    private func row(
+        _ label: String, @ViewBuilder content: () -> some View, @ViewBuilder trailing: () -> some View = { EmptyView() }
+    ) -> some View {
         let text = Text(label)
             .font(skin.font(AinkradFontToken(sizeKey: "t13")))
             .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
         return ViewThatFits(in: .horizontal) {
-            HStack(spacing: skin.size.s14) {
-                text.frame(width: skin.size.s200, alignment: .leading)
+            HStack(spacing: skin.size.s12) {
+                text.frame(width: skin.size.s160 + skin.size.s10, alignment: .leading)
                 content()
                 Spacer(minLength: 0)
+                trailing()
             }
             VStack(alignment: .leading, spacing: skin.size.s8) {
                 text
-                content()
+                HStack(spacing: skin.size.s12) {
+                    content()
+                    trailing()
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(.vertical, skin.size.s8)
     }
 
-    private func agentRow(badge: String, tint: Color, detail: String, @ViewBuilder action: () -> some View) -> some View
-    {
-        let badge = AinkradBadge(text: badge, tint: tint).fixedSize()
+    private func agentRow(_ harness: Harness, detail: String, @ViewBuilder action: () -> some View) -> some View {
+        let badge = HarnessBadge(harness: harness).fixedSize()
         let detail = Text(detail)
             .font(AinkradFontResolver.font(size: 12, mono: true, typography: typography))
             .foregroundStyle(skin.color(skin.text.muted))
@@ -172,8 +190,8 @@ struct SettingsView: View {
             .truncationMode(.middle)
         // Narrow (GD26), the path goes under the badge rather than shrink to "…".
         return ViewThatFits(in: .horizontal) {
-            HStack(spacing: skin.size.s14) {
-                badge.frame(minWidth: skin.size.s96, maxWidth: skin.size.s200, alignment: .leading)
+            HStack(spacing: skin.size.s12) {
+                badge.frame(width: skin.size.s160 + skin.size.s10, alignment: .leading)
                 detail.fixedSize()
                 Spacer(minLength: 0)
                 action()
@@ -187,6 +205,7 @@ struct SettingsView: View {
                 detail
             }
         }
+        .padding(.vertical, skin.size.s8)
     }
 
     private func chooseCLI() {

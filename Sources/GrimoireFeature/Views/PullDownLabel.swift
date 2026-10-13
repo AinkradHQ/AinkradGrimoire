@@ -10,6 +10,8 @@ import SwiftUI
 /// pull-down trigger label is an Epic 4 gap; until then every value here comes
 /// from the skin.
 struct PullDownLabel<Content: View>: View {
+    /// The mockups draw ▾ only on a value you pick from a list (Model), not on a cycling one (Mode).
+    var showsChevron = true
     @ViewBuilder let content: Content
 
     @Environment(\.ainkradSkin) private var skin
@@ -21,9 +23,11 @@ struct PullDownLabel<Content: View>: View {
             // up/down chevrons on an interactive glass capsule.
             HStack(spacing: skin.spacing.xs) {
                 content
-                Image(systemName: "chevron.up.chevron.down")
-                    .imageScale(.small)
-                    .foregroundStyle(.secondary)
+                if showsChevron {
+                    Image(systemName: "chevron.up.chevron.down")
+                        .imageScale(.small)
+                        .foregroundStyle(.secondary)
+                }
             }
             .padding(.horizontal, skin.spacing.md)
             .padding(.vertical, skin.spacing.sm)
@@ -38,9 +42,11 @@ struct PullDownLabel<Content: View>: View {
         let shape = AinkradSkinShape(token: trigger.shape)
         return HStack(spacing: skin.spacing.xs) {
             content
-            Image(systemName: "chevron.down")
-                .font(skin.font(trigger.chevron, typography: typo))
-                .foregroundStyle(skin.color(trigger.chevronColor))
+            if showsChevron {
+                Image(systemName: "chevron.down")
+                    .font(skin.font(trigger.chevron, typography: typo))
+                    .foregroundStyle(skin.color(trigger.chevronColor))
+            }
         }
         .padding(.horizontal, skin.spacing.md)
         .padding(.vertical, skin.spacing.sm)
@@ -48,5 +54,31 @@ struct PullDownLabel<Content: View>: View {
         .overlay(
             shape.strokeBorder(
                 skin.color(trigger.stroke.color), lineWidth: trigger.stroke.width.resolve([])))
+    }
+}
+
+/// A menu's label drawn like the kit's framed icon buttons beside it: the header's More (⋯), framed as mockup 2's
+/// `.icon-btn` (6 pt chamfer, the cyan rim, the strong fill). A menu can't take an `AinkradIconButton` as its label
+/// (a button in a button), and the kit's icon-button tokens aren't public.
+struct IconMenuLabel: View {
+    let systemName: String
+    let size: CGFloat
+    @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradTheme) private var theme
+
+    @ViewBuilder var body: some View {
+        let glyph = Image(systemName: systemName)
+            .font(skin.font(AinkradFontToken(sizeKey: "t13", weight: "semibold", scaled: false)))
+            .frame(width: size, height: size)
+        if #available(macOS 26, *), skin.usesNativeGlass {
+            glyph.glassEffect(.regular.interactive(), in: .circle).contentShape(.circle)
+        } else {
+            let shape = skin.shape(cut: skin.size.s6)
+            glyph
+                .foregroundStyle(theme.foreground)
+                .background(shape.fill(theme.surfaceElevated.opacity(skin.opacity.o95)))
+                .overlay(shape.strokeBorder(theme.accentSecondary.opacity(skin.opacity.o45), lineWidth: 1))
+                .contentShape(shape)
+        }
     }
 }

@@ -14,6 +14,7 @@ final class ForgeLinkSnapshotTests: XCTestCase {
             settings: SettingsStore(documents: MemoryDocs()),
             sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
         model.engineOverride = { FakeEngine() }
+        model.now = { Date(timeIntervalSince1970: 1_791_700_000) }  // frozen "Done in …"
         model.startThread(project: "/tmp/work", prompt: "Where else do we draw the selection stroke?", model: nil, mode: .ask, worktree: false)
         let live = try XCTUnwrap(model.current)
         live.onSessionID = nil
