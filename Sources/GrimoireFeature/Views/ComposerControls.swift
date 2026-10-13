@@ -134,7 +134,9 @@ enum Attach {
 }
 
 /// ⌘V in the composer's text view attaches an image on the pasteboard instead of doing nothing (the text view is
-/// plain text). Watches key-downs in its own window only, while it is in one; text pastes as before.
+/// plain text). Watches key-downs in its own window only, while it is in one; text pastes as before. The host's
+/// window also holds other apps' views, so it acts only when the focused text view sits inside this monitor —
+/// the composer it backs (GD32); the kit's text view carries no identifier to check instead.
 struct PasteImageMonitor: NSViewRepresentable {
     let onPaste: (NSPasteboard) -> Bool
 
@@ -155,10 +157,19 @@ struct PasteImageMonitor: NSViewRepresentable {
                     event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
                     event.charactersIgnoringModifiers == "v",
                     let editor = window.firstResponder as? NSTextView, editor.isEditable, !editor.isFieldEditor,
-                    self.onPaste?(.general) == true
+                    self.contains(editor), self.onPaste?(.general) == true
                 else { return event }
                 return nil
             }
+        }
+
+        /// The text view shows inside this view's frame: it is the composer's own, not another app's field.
+        func contains(_ editor: NSView) -> Bool {
+            guard editor.window === window else { return false }
+            // The scroll view around a text view is what shows of it; the text view itself may be taller.
+            let box = editor.enclosingScrollView ?? editor
+            let shown = box.convert(box.bounds, to: nil)
+            return !shown.isEmpty && convert(bounds, to: nil).contains(NSPoint(x: shown.midX, y: shown.midY))
         }
     }
 }

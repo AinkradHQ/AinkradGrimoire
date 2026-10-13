@@ -142,4 +142,25 @@ struct ImageAttachmentTests {
         #expect(engines.last?.images == [[image]])
         #expect(live.attachments.isEmpty)
     }
+
+    @Test("GD32: ⌘V attaches only when the focused text view is inside Grimoire's composer, not another app's field")
+    func pasteOnlyInOwnComposer() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 800, height: 400), styleMask: [], backing: .buffered, defer: true)
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 800, height: 400))
+        window.contentView = root
+        // Grimoire's composer on the right; another tiled app's multi-line field on the left.
+        let monitor = PasteImageMonitor.MonitorView(frame: NSRect(x: 420, y: 10, width: 360, height: 80))
+        // Both scrollable, as the kit's composer field is.
+        let composerScroll = NSTextView.scrollableTextView()
+        composerScroll.frame = NSRect(x: 440, y: 30, width: 320, height: 40)
+        let otherScroll = NSTextView.scrollableTextView()
+        otherScroll.frame = NSRect(x: 20, y: 30, width: 320, height: 40)
+        [monitor, composerScroll, otherScroll].forEach(root.addSubview)
+        let composer = composerScroll.documentView!, other = otherScroll.documentView!
+        #expect(monitor.contains(composer))
+        #expect(!monitor.contains(other))
+        #expect(!monitor.contains(NSTextView(frame: composerScroll.frame)), "not in this window")
+    }
 }
+
