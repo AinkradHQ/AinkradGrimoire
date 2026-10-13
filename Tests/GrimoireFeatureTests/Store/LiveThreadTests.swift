@@ -9,13 +9,17 @@ final class FakeEngine: HarnessEngine {
     let events = AsyncStream<EngineEvent> { _ in }
     private(set) var started: EngineStartOptions?
     private(set) var sent: [String] = []
+    private(set) var images: [[EngineImage]] = []
     private(set) var answers: [ApprovalDecision] = []
     private(set) var interrupts = 0
     private(set) var modes: [PermissionMode] = []
     private(set) var efforts: [String] = []
 
     func start(_ options: EngineStartOptions) throws { started = options }
-    func send(_ text: String, images: [EngineImage]) throws { sent.append(text) }
+    func send(_ text: String, images: [EngineImage]) throws {
+        sent.append(text)
+        self.images.append(images)
+    }
     func interrupt() throws { interrupts += 1 }
     func answer(_ request: ApprovalRequest, with decision: ApprovalDecision) throws { answers.append(decision) }
     func setPermissionMode(_ mode: PermissionMode) throws { modes.append(mode) }

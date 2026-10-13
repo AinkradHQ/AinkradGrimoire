@@ -39,6 +39,8 @@ final class LiveThread {
     var agentName = "The agent"
     /// The composer's text. Kept here so a message the agent never answered can go back into it.
     var draft = ""
+    /// Images waiting in the composer's chips row, sent with the next message.
+    var attachments: [ImageAttachment] = []
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
     private(set) var startingSince: Date?
     /// Messages in the stored history this thread opened with.

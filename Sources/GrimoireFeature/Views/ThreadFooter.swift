@@ -32,9 +32,10 @@ struct ThreadFooter: View {
                 text: Bindable(live).draft,
                 placeholder: "Message \(harness.displayName)… (/ for commands, @ for files)", isEditable: true,
                 canSend: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, autoFocus: true,
-                suggestions: suggestions, onPick: { _, _ in }, onDrop: nil, onSend: send
+                suggestions: suggestions, onPick: { _, _ in },
+                onDrop: harness.acceptsImages ? { Attach.drop($0, into: live) } : nil, onSend: send
             ) {
-                EmptyView()
+                AttachmentChips(live: live)
             } leading: {
                 // The captions go first when the thread is squeezed (GD10).
                 ViewThatFits(in: .horizontal) {
@@ -57,6 +58,12 @@ struct ThreadFooter: View {
                 if let at = live.sendAt {
                     queued(at)
                 }
+                if harness.acceptsImages {
+                    AinkradIconButton(
+                        systemName: "paperclip", size: AinkradComposer<EmptyView, EmptyView, EmptyView>.controlHeight,
+                        tooltip: "Attach images (or drop or paste them)"
+                    ) { Attach.choose(into: live) }
+                }
                 // The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
                 if live.canInterrupt, live.pendingApproval == nil {
                     AinkradButton(title: "Stop", style: .danger, icon: "stop.fill") { live.interrupt() }
@@ -65,6 +72,9 @@ struct ThreadFooter: View {
                 }
             }
             .paletteSuggestionRows()
+            .background {
+                if harness.acceptsImages { PasteImageMonitor { Attach.paste($0, into: live) } }
+            }
             // ⌘L: a fresh editor autofocuses — the kit's composer has no other focus hook. The draft is kept.
             .id(model.composerFocusRequest)
             // Waiting on the limit's reset, the composer steps back (mockup 12 D).
@@ -82,7 +92,9 @@ struct ThreadFooter: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         live.draft = ""
-        live.send(text)
+        let images = live.attachments.map(\.image)
+        live.attachments = []
+        live.send(text, images: images)
     }
 
     private func limitBar(_ limit: UsageLimit) -> some View {

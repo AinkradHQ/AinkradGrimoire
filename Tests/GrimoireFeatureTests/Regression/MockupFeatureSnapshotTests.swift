@@ -45,4 +45,23 @@ final class MockupFeatureSnapshotTests: XCTestCase {
             EditDiffBlock(diff: ToolSummary.editDiff(input), path: file.path).padding(12), named: "edit-line-numbers",
             size: CGSize(width: 640, height: 200))
     }
+
+    /// Mockup 3's composer: image chips with ✕, the strip's Effort and 📎.
+    func testComposerWithImageChips() {
+        let model = GrimoireModel(
+            settings: SettingsStore(documents: MemoryDocs()),
+            sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { FakeEngine() })
+        live.setEffort("high")
+        let image = EngineImage(mediaType: "image/png", base64: "AAA")
+        live.attachments = [
+            ImageAttachment(name: "sidebar.png", image: image), ImageAttachment(name: "after-glass.png", image: image),
+        ]
+        live.draft = "The selected row still draws a hairline — see the screenshots."
+        Snapshot.assertMatches(
+            ThreadFooter(live: live, model: model, workingDirectory: "/repo", harness: .claude), named: "composer-images",
+            size: CGSize(width: 820, height: 190))
+    }
 }
