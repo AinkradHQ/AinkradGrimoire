@@ -96,4 +96,13 @@ struct ThreadEntriesTests {
         #expect(
             ToolSummary.result(name: "Edit", input: edit, output: ToolOutput(content: "", isError: false)) == "+2 −1")
     }
+
+    @Test("a cat -n or Read line splits into its number and its text (GD5)")
+    func gutter() {
+        #expect(ToolSummary.gutter("     12\tlet a = 1").map { [$0.number, $0.text] } == ["     12", "let a = 1"])
+        #expect(ToolSummary.gutter("    3→}").map { [$0.number, $0.text] } == ["    3", "}"])
+        #expect(ToolSummary.gutter("a\tb") == nil)
+        #expect(ToolSummary.gutter("   \tb") == nil)
+        #expect(ToolSummary.gutter("** BUILD SUCCEEDED **") == nil)
+    }
 }

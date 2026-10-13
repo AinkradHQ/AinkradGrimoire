@@ -154,6 +154,14 @@ enum ToolSummary {
 
     static func lineCount(_ text: String) -> Int { lines(text).count }
 
+    /// A `cat -n` or Read line ("     12\tcode", "    12→code") as its number and its text; `nil` for any other (GD5).
+    static func gutter(_ line: Substring) -> (number: Substring, text: Substring)? {
+        guard let separator = line.firstIndex(where: { $0 == "\t" || $0 == "→" }) else { return nil }
+        let number = line[..<separator]
+        guard number.contains(where: \.isNumber), number.allSatisfy({ $0 == " " || $0.isNumber }) else { return nil }
+        return (number, line[line.index(after: separator)...])
+    }
+
     /// `text` split into lines; the newline that ends the last line (nearly all
     /// output has one) does not start another, empty one (GD18).
     static func lines(_ text: String) -> [Substring] {
