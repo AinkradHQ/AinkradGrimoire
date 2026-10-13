@@ -86,9 +86,13 @@ final class ReviewModel {
         live.send("")
     }
 
+    /// Hunks can be reverted only between turns: mid-turn the agent may be editing those very files (GD36).
+    var canRevertHunks: Bool { !live.canInterrupt }
+
     /// Reverts the ticked hunks in the working tree. A file whose hunks can't be placed exactly (it changed since)
     /// is left untouched and named in the error.
     func revertSelected() async {
+        guard canRevertHunks else { return }
         let chosen = files.compactMap { file -> (path: String, hunks: [AinkradDiffHunk])? in
             let hunks = file.diff?.hunks.filter { selectedHunks.contains(HunkKey(path: file.path, hunk: $0.id)) } ?? []
             return hunks.isEmpty ? nil : (file.path, hunks)

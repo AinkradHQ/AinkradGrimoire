@@ -75,6 +75,30 @@ struct HunkRevertTests {
         #expect(try String(contentsOf: crlf, encoding: .utf8) == original)
     }
 
+    @Test("GD36: Revert selected waits while the agent's turn runs; it works again once the turn ends")
+    func notMidTurn() async throws {
+        let (repo, _) = try await repository()
+        defer { try? FileManager.default.removeItem(at: repo) }
+        let file = repo.appendingPathComponent("a.txt")
+        let edited = Self.original.replacingOccurrences(of: "line 4\n", with: "line four\n")
+        try edited.write(to: file, atomically: true, encoding: .utf8)
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: repo), makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: CLILocator.loginEnvironment())
+        review.scope = .uncommitted
+        await review.load()
+        let hunk = try #require(review.files.first?.diff?.hunks.first)
+        review.selectedHunks = [HunkKey(path: "a.txt", hunk: hunk.id)]
+        live.send("keep editing a.txt")
+        #expect(!review.canRevertHunks)
+        await review.revertSelected()
+        #expect(try String(contentsOf: file, encoding: .utf8) == edited, "nothing written mid-turn")
+        live.apply(.turnFinished(TurnResult(outcome: .success, sessionID: "s", costUSD: nil, text: nil)))
+        #expect(review.canRevertHunks)
+        await review.revertSelected()
+        #expect(try String(contentsOf: file, encoding: .utf8) == Self.original)
+    }
+
     @Test("a file that changed since is refused and left untouched")
     func conflict() async throws {
         let (repo, _) = try await repository()

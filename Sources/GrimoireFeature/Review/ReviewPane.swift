@@ -130,8 +130,10 @@ struct ReviewPane: View {
                 HStack(spacing: skin.size.s8) {
                     AinkradButton(title: "Revert selected", style: .secondary) { isRevertingHunks = true }
                         .secondaryAccent().fullWidth()
-                        .disabled(review.selectedHunks.isEmpty)
-                        .help("Tick hunks to revert them")
+                        .disabled(review.selectedHunks.isEmpty || !review.canRevertHunks)
+                        .help(
+                            review.canRevertHunks
+                                ? "Tick hunks to revert them" : "Waits for the agent's turn to end — it may be editing these files")
                     if let forge, review.comments.isEmpty {
                         AinkradButton(title: "Review in Forge ↗", style: .secondary, action: forge)
                             .secondaryAccent().fullWidth()
