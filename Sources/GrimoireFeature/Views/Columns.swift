@@ -41,10 +41,56 @@ struct Columns: View {
             if layout.showsSidebar {
                 Sidebar(model: model, isCompact: layout.isSidebarCompact)
             }
-            MainPane(model: model)
+            VStack(spacing: 0) {
+                // The sidebar's "needs you" has gone with it: say it here instead.
+                if !layout.showsSidebar, !model.othersNeedingYou.isEmpty {
+                    NeedsYouStrip(model: model, threads: model.othersNeedingYou)
+                }
+                MainPane(model: model)
+            }
         }
         .environment(\.reviewReplacesThread, layout.reviewReplacesThread)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+    }
+}
+
+extension GrimoireModel {
+    /// Threads other than the open one waiting on an approval, oldest id first.
+    var othersNeedingYou: [ClaudeSessionSummary] {
+        let waiting = Set(liveThreads.filter { $0.key != selectedThreadID && $0.value.status == .needsYou }.keys)
+        return projects.flatMap(\.sessions).filter { waiting.contains($0.id) }.sorted { $0.id < $1.id }
+    }
+}
+
+/// Over the main pane while the sidebar is hidden (a narrow window with the review open): the sidebar's amber
+/// "needs you", naming the thread, and a way there.
+struct NeedsYouStrip: View {
+    let model: GrimoireModel
+    let threads: [ClaudeSessionSummary]
+    @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradStatusColors) private var statusColors
+
+    var body: some View {
+        HStack(spacing: skin.size.s8) {
+            StatusDot(status: .needsYou)
+            Group {
+                if threads.count == 1, let thread = threads.first {
+                    Text(thread.title).foregroundStyle(theme.foreground.opacity(skin.opacity.o85))
+                    Text("needs you").foregroundStyle(statusColors.warning)
+                } else {
+                    Text("\(threads.count) threads need you").foregroundStyle(statusColors.warning)
+                }
+            }
+            .lineLimit(1)
+            Spacer(minLength: skin.size.s6)
+            AinkradButton(title: "Open", style: .ghost) { model.selectedThreadID = threads.first?.id }
+                .borderless().secondaryAccent().fixedSize()
+                .help(threads.first.map { "Open \($0.title)" } ?? "")
+        }
+        .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+        .padding(.horizontal, skin.size.s20)
+        .padding(.top, skin.size.s8)
     }
 }
 
