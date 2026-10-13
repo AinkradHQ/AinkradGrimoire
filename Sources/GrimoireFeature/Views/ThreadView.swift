@@ -305,7 +305,7 @@ private struct OutputBlock: View {
     @Environment(\.ainkradTypography) private var typography
 
     var body: some View {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let lines = ToolSummary.lines(text)
         let shown = lines.prefix(maxLines).joined(separator: "\n")
         VStack(alignment: .leading, spacing: skin.size.s4) {
             Text(shown)
