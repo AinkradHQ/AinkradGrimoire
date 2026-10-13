@@ -53,8 +53,6 @@ final class ScreenSnapshotTests: XCTestCase {
     func testNewThreadComposer() async throws {
         let (model, root) = try await sidebarModel()
         defer { try? FileManager.default.removeItem(at: root) }
-        model.newThreadPreset = NewThreadPreset(
-            project: "/Users/me/Projects/Ainkrad", prompt: "Tighten the README intro and check its links.")
         Snapshot.assertMatches(
             NewThreadSheet(model: model) {}.padding(20), named: "composer", size: CGSize(width: 600, height: 460))
     }

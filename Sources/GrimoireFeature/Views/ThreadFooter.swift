@@ -191,7 +191,7 @@ extension PermissionMode {
 }
 
 /// "MODE Ask": a faint caption and the value, inside a pull-down label.
-private struct MenuValue: View {
+struct MenuValue: View {
     let caption: String?
     let value: String
     @Environment(\.ainkradSkin) private var skin

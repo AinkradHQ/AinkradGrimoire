@@ -66,19 +66,30 @@ struct ForgeLinkTests {
         #expect(ForgeLink.absolute("a.swift", in: "/r") == "/r/a.swift" && ForgeLink.absolute("/x/a.swift", in: "/r") == "/x/a.swift")
     }
 
-    @Test func anAskFromForgeCarriesItsSelectionAsAChipAndNeverSends() {
+    @Test func anAskFromForgeArrivesInlineWithItsSelectionAndNeverSends() {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-forge-\(UUID().uuidString.prefix(8))")
         let model = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        model.isComposingNewThread = true
+        model.isShowingSettings = true
         model.handleLaunch(
             #"{"kind":"openDocument","path":"/p","prompt":"In a.swift, lines 18–19:…","request":"Animate it","file":"Sources/a.swift","lines":[18,19],"code":"x\ny"}"#
         )
-        #expect(model.isComposingNewThread)
+        // Inline in the main pane, not the New Thread sheet; nothing else covers it.
+        #expect(!model.isComposingNewThread && !model.isShowingSettings && model.selectedThreadID == nil)
+        #expect(model.projects.contains { $0.path == "/p" })
         let context = AskContext(project: "/p", file: "Sources/a.swift", lines: 18...19, code: "x\ny")
-        #expect(model.newThreadPreset == NewThreadPreset(project: "/p", prompt: "Animate it", context: context))
+        #expect(model.forgeAsk == ForgeAsk(project: "/p", prompt: "Animate it", context: context))
         #expect(context.label == "a.swift · lines 18–19 · 2 lines")
         #expect(context.numbered == "18\tx\n19\ty")
         #expect(context.message("Animate it") == "In Sources/a.swift, lines 18–19:\n\n```swift\nx\ny\n```\n\nAnimate it")
         #expect(model.current == nil)  // nothing started
+
+        // An older Forge's askAgent (no parts) arrives the same way, its whole prompt in the field.
+        model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"Explain this"}"#)
+        #expect(model.forgeAsk == ForgeAsk(project: "/p", prompt: "Explain this", context: nil))
+        // Opening a thread leaves the ask (the header's ✕ clears it the same way; Esc does not).
+        model.selectedThreadID = "s1"
+        #expect(model.forgeAsk == nil)
 
         // A plain openDocument (no request) is not an ask.
         #expect(AskLaunch.decode(AinkradLaunchIntent(path: "/p").json) == nil)

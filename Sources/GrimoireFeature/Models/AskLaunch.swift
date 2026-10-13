@@ -37,7 +37,7 @@ struct AskLaunch: Codable, Equatable {
 }
 
 /// The code a request from Forge is about: shown as a chip and a read-only snippet, sent with the words.
-struct AskContext: Equatable {
+struct AskContext: Hashable {
     let project: String
     /// Relative to `project`.
     let file: String
@@ -63,8 +63,8 @@ struct AskContext: Equatable {
     }
 }
 
-/// What the New Thread sheet starts with when another app asked.
-struct NewThreadPreset: Equatable {
+/// A new thread another app asked for, prefilled in the main pane's composer.
+struct ForgeAsk: Hashable {
     let project: String
     let prompt: String
     /// Forge's selection, when it sent one: the chip and snippet above the field.

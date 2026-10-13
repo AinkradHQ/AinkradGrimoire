@@ -47,6 +47,7 @@ final class GrimoireModel {
         didSet {
             guard selectedThreadID != oldValue else { return }
             isShowingSettings = false
+            forgeAsk = nil
             loadSelectedThread()
         }
     }
@@ -64,8 +65,8 @@ final class GrimoireModel {
     /// Bumped by ⌘F and ⌘L; the sidebar search and the composer take focus when they change.
     var searchFocusRequest = 0
     var composerFocusRequest = 0
-    /// The New Thread sheet's project and request, when another app asked (see `handleLaunch`).
-    var newThreadPreset: NewThreadPreset?
+    /// A request from Forge, waiting in the main pane's inline composer until sent or discarded (see `handleLaunch`).
+    var forgeAsk: ForgeAsk?
     /// The review pane beside the conversation; stays open across threads.
     var isReviewOpen = false
     private var reviews: [String: ReviewModel] = [:]

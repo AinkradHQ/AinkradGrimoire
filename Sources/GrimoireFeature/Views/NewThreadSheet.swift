@@ -15,19 +15,14 @@ struct NewThreadSheet: View {
     @State private var worktree: Bool
     @State private var harness: Harness
     @State private var prompt = ""
-    /// Forge's selection (⌘I), sent with the words unless removed.
-    @State private var context: AskContext?
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
 
     init(model: GrimoireModel, dismiss: @escaping () -> Void) {
         self.model = model
         self.dismiss = dismiss
-        let preset = model.newThreadPreset
-        let project = preset?.project ?? model.selectedThread?.projectPath ?? model.mostRecentProject ?? ""
+        let project = model.selectedThread?.projectPath ?? model.mostRecentProject ?? ""
         _project = State(initialValue: project)
-        _prompt = State(initialValue: preset?.prompt ?? "")
-        _context = State(initialValue: preset?.context)
         _agentModel = State(initialValue: model.settings.defaultModel)
         _harness = State(initialValue: Self.installed(model).first ?? .claude)
         _mode = State(initialValue: model.settings.defaultMode)
@@ -42,13 +37,9 @@ struct NewThreadSheet: View {
                 Text("New thread")
                     .font(skin.font(AinkradFontToken(sizeKey: "t16", weight: "semibold")))
                     .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
-                Text(
-                    model.newThreadPreset?.context != nil
-                        ? "From Forge ⌘I: it sent a selection. Edit the request, then Start — nothing runs until you do."
-                        : "Starts an agent session in a project. It shows up in that CLI's own history too."
-                )
-                .font(skin.font(AinkradFontToken(sizeKey: "t12")))
-                .foregroundStyle(skin.color(skin.text.muted))
+                Text("Starts an agent session in a project. It shows up in that CLI's own history too.")
+                    .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+                    .foregroundStyle(skin.color(skin.text.muted))
             }
 
             row("Agent") {
@@ -82,8 +73,6 @@ struct NewThreadSheet: View {
                     .fixedSize()
             }
 
-            if let context { selection(context) }
-
             AinkradTextArea(
                 text: $prompt, placeholder: "What should it do?", minHeight: skin.size.s70, maxHeight: skin.size.s200,
                 autoFocus: true, onSubmit: start)
@@ -100,19 +89,6 @@ struct NewThreadSheet: View {
         .onChange(of: harness) {
             if !canUseWorktree { worktree = false }
             otherModel = nil
-        }
-    }
-
-    /// The chip (file · lines; ↗ back to Forge, ✕ leaves the code out) and the code, read-only.
-    private func selection(_ context: AskContext) -> some View {
-        VStack(alignment: .leading, spacing: skin.size.s8) {
-            HStack(spacing: skin.size.s6) {
-                AinkradChip(label: context.label, systemName: "doc.text") { self.context = nil }
-                AinkradIconButton(systemName: "arrow.up.right", size: skin.size.s22, tooltip: "Open in Forge") {
-                    model.openInForge(context.file, line: context.lines.lowerBound, directory: context.project)
-                }
-            }
-            OutputBlock(text: context.numbered, maxLines: 8)
         }
     }
 
@@ -190,9 +166,7 @@ struct NewThreadSheet: View {
     private func start() {
         guard canStart else { return }
         model.startThread(
-            project: project,
-            prompt: context.map { $0.message(prompt.trimmingCharacters(in: .whitespacesAndNewlines)) }
-                ?? prompt.trimmingCharacters(in: .whitespacesAndNewlines),
+            project: project, prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
             model: harness == .claude ? agentModel : otherModel, mode: mode, worktree: worktree, harness: harness)
         dismiss()
     }

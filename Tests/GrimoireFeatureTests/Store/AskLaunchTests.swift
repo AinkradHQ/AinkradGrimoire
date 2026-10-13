@@ -4,7 +4,7 @@ import Testing
 
 @testable import GrimoireFeature
 
-/// Forge's Ask Agent: its payload opens the New Thread sheet on the project with the request.
+/// Forge's Ask Agent: its payload opens a new thread inline on the project with the request.
 @MainActor
 @Suite("Ask launch")
 struct AskLaunchTests {
@@ -12,8 +12,8 @@ struct AskLaunchTests {
         let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-ask-\(UUID().uuidString.prefix(8))")
         let model = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
         model.handleLaunch(#"{"kind":"askAgent","path":"/Users/me/Projects/Ainkrad","prompt":"In a.swift, line 3:\n\nMake it faster."}"#)
-        #expect(model.isComposingNewThread)
-        #expect(model.newThreadPreset == NewThreadPreset(project: "/Users/me/Projects/Ainkrad", prompt: "In a.swift, line 3:\n\nMake it faster."))
+        #expect(!model.isComposingNewThread)
+        #expect(model.forgeAsk == ForgeAsk(project: "/Users/me/Projects/Ainkrad", prompt: "In a.swift, line 3:\n\nMake it faster."))
         #expect(model.settings.openedFolders.contains("/Users/me/Projects/Ainkrad"))
     }
 
@@ -24,6 +24,6 @@ struct AskLaunchTests {
         model.handleLaunch("not json")
         model.handleLaunch(nil)
         #expect(!model.isComposingNewThread)
-        #expect(model.newThreadPreset == nil)
+        #expect(model.forgeAsk == nil)
     }
 }
