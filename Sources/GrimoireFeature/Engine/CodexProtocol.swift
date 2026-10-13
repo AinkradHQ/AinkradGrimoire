@@ -15,6 +15,7 @@ struct CodexProtocol {
         case thread
         case turnStart
         case interrupt
+        case steer
     }
 
     private(set) var pending: [Int: Pending] = [:]
@@ -84,6 +85,17 @@ struct CodexProtocol {
     mutating func interrupt() -> JSONValue? {
         guard let threadID, let turnID else { return nil }
         return request(.interrupt, method: "turn/interrupt", params: ["threadId": .string(threadID), "turnId": .string(turnID)])
+    }
+
+    /// Text added to the running turn (`turn/steer`): a denial's reason, which Codex's `decline` cannot carry.
+    mutating func steer(_ text: String) -> JSONValue? {
+        guard let threadID, let turnID else { return nil }
+        return request(
+            .steer, method: "turn/steer",
+            params: [
+                "threadId": .string(threadID), "expectedTurnId": .string(turnID),
+                "input": [["type": "text", "text": .string(text), "text_elements": []]],
+            ])
     }
 
     /// The JSON-RPC response to an approval request.
@@ -176,7 +188,7 @@ struct CodexProtocol {
         case .turnStart:
             turnID = result["turn"]?["id"]?.stringValue ?? turnID
             return []
-        case .initialize, .interrupt:
+        case .initialize, .interrupt, .steer:
             return []
         }
     }

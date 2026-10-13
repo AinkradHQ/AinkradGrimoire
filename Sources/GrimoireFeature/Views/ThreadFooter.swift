@@ -218,19 +218,42 @@ struct MenuValue: View {
     }
 }
 
-/// The approval the agent is waiting on, docked above the composer.
-private struct ApprovalBar: View {
+/// The approval the agent is waiting on, docked above the composer. "Deny…" asks for an optional reason the agent
+/// sees (mockup 4); ⌘⌫ still denies at once.
+struct ApprovalBar: View {
     let request: ApprovalRequest
     let workingDirectory: String
     let live: LiveThread
+    /// Internal so a snapshot can show the reason field open.
+    @State var isDenying = false
+    @State private var reason = ""
+    @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
         let argument = ToolSummary.argument(
             name: request.toolName, input: request.input, workingDirectory: workingDirectory)
-        // Mockup 4: a bare cyan Deny, Always allow named by the CLI's own rule, Allow once with its key.
+        let title = request.toolName == "Bash" ? "Run \(argument)" : "\(request.toolName) \(argument)"
+        VStack(alignment: .leading, spacing: 0) {
+            AinkradDecisionBar(
+                icon: "bolt.horizontal", iconTint: .secondary, caption: isDenying ? "Deny" : "Approval required",
+                title: title, actions: isDenying ? denyActions : actions
+            )
+            .labelCasedCaption()
+            if isDenying {
+                AinkradTextField(text: $reason, placeholder: "Reason for the agent (optional) — ↵ denies")
+                    .onSubmit(deny)
+                    .padding(.horizontal, skin.size.s14)
+                    .padding(.bottom, skin.spacing.xs)
+                    .transition(.opacity)
+            }
+        }
+        .id(request.id)
+    }
+
+    /// Mockup 4: a bare cyan Deny…, Always allow named by the CLI's own rule, Allow once with its key.
+    private var actions: [AinkradDecisionBar.Action] {
         var actions: [AinkradDecisionBar.Action] = [
-            AinkradDecisionBar.Action(title: "Deny", style: .ghost) { live.answer(.deny(reason: "Denied in Grimoire.")) }
-                .borderless().secondaryAccent()
+            AinkradDecisionBar.Action(title: "Deny…", style: .ghost) { isDenying = true }.borderless().secondaryAccent()
         ]
         if live.canAllowAlways {
             let rule = ApprovalBarRule.rule(request.suggestions).map { "Always allow \($0)" } ?? "Always allow"
@@ -238,15 +261,29 @@ private struct ApprovalBar: View {
                 AinkradDecisionBar.Action(title: rule, style: .secondary) { live.answer(.allowAlways) }.secondaryAccent())
         }
         actions.append(.init(title: "Allow once ↵", style: .primary) { live.answer(.allow) })
-        return AinkradDecisionBar(
-            icon: "bolt.horizontal", iconTint: .secondary, caption: "Approval required",
-            title: request.toolName == "Bash" ? "Run \(argument)" : "\(request.toolName) \(argument)", actions: actions
-        )
-        .labelCasedCaption()
+        return actions
     }
+
+    private var denyActions: [AinkradDecisionBar.Action] {
+        [
+            AinkradDecisionBar.Action(title: "Cancel", style: .ghost) {
+                isDenying = false
+                reason = ""
+            }.borderless().secondaryAccent(),
+            AinkradDecisionBar.Action(title: "Deny", style: .danger, perform: deny),
+        ]
+    }
+
+    private func deny() { live.answer(.deny(reason: ApprovalBarRule.denial(reason))) }
 }
 
 enum ApprovalBarRule {
+    /// What the agent is told on a denial: your reason, or a plain "denied".
+    static func denial(_ reason: String) -> String {
+        let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
+        return reason.isEmpty ? "Denied in Grimoire." : "Denied in Grimoire: \(reason)"
+    }
+
     /// What "Always allow" adopts, in the CLI's words: Claude's rule (`git push:*` → `git push *`), or its mode
     /// ("accept edits for this session"). Nil when the suggestion names neither (Codex, OpenCode).
     static func rule(_ suggestions: [JSONValue]) -> String? {

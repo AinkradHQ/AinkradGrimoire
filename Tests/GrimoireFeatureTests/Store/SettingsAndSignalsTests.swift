@@ -118,5 +118,7 @@ struct ClaudeConfigTests {
         #expect(ApprovalBarRule.rule([rule]) == "git push *")
         #expect(ApprovalBarRule.rule([["type": "setMode", "mode": "acceptEdits"]]) == "accept edits for this session")
         #expect(ApprovalBarRule.rule([["type": "acceptForSession"]]) == nil)
+        #expect(ApprovalBarRule.denial("  ") == "Denied in Grimoire.")
+        #expect(ApprovalBarRule.denial(" use the kit\n") == "Denied in Grimoire: use the kit")
     }
 }

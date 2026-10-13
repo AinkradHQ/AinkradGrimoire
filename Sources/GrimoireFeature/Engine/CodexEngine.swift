@@ -57,6 +57,10 @@ public final class CodexEngine: HarnessEngine {
 
     public func answer(_ request: ApprovalRequest, with decision: ApprovalDecision) throws {
         try write(wire.answer(request, with: decision))
+        // `decline` has no message: the reason goes into the running turn instead.
+        if case .deny(let reason) = decision, reason != ApprovalBarRule.denial(""), let steer = wire.steer(reason) {
+            try write(steer)
+        }
     }
 
     /// Codex takes the mode with each turn; it applies from the next one.
