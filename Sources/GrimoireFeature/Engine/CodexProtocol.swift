@@ -15,6 +15,7 @@ struct CodexProtocol {
         case thread
         case turnStart
         case interrupt
+        case steer
     }
 
     private(set) var pending: [Int: Pending] = [:]
@@ -26,6 +27,8 @@ struct CodexProtocol {
     /// Mode and model apply to the next `turn/start` (Codex sets them per turn).
     var mode: PermissionMode = .ask
     var model: String?
+    /// Reasoning effort, likewise per turn.
+    var effort: String?
     /// Server-request ids we turned into approvals: answers must echo the id.
     private var approvalKinds: [String: ApprovalKind] = [:]
 
@@ -52,6 +55,7 @@ struct CodexProtocol {
     mutating func startThread(_ options: EngineStartOptions) -> JSONValue {
         mode = options.permissionMode ?? mode
         model = options.model ?? model
+        effort = options.effort ?? effort
         var params: [String: JSONValue] = [
             "cwd": .string(options.workingDirectory.path),
             "approvalPolicy": .string(Self.approvalPolicy(for: mode)),
@@ -78,12 +82,24 @@ struct CodexProtocol {
             "sandboxPolicy": Self.sandboxPolicy(for: mode),
         ]
         if let model { params["model"] = .string(model) }
+        if let effort { params["effort"] = .string(effort) }
         return request(.turnStart, method: "turn/start", params: .object(params))
     }
 
     mutating func interrupt() -> JSONValue? {
         guard let threadID, let turnID else { return nil }
         return request(.interrupt, method: "turn/interrupt", params: ["threadId": .string(threadID), "turnId": .string(turnID)])
+    }
+
+    /// Text added to the running turn (`turn/steer`): a denial's reason, which Codex's `decline` cannot carry.
+    mutating func steer(_ text: String) -> JSONValue? {
+        guard let threadID, let turnID else { return nil }
+        return request(
+            .steer, method: "turn/steer",
+            params: [
+                "threadId": .string(threadID), "expectedTurnId": .string(turnID),
+                "input": [["type": "text", "text": .string(text), "text_elements": []]],
+            ])
     }
 
     /// The JSON-RPC response to an approval request.
@@ -176,7 +192,7 @@ struct CodexProtocol {
         case .turnStart:
             turnID = result["turn"]?["id"]?.stringValue ?? turnID
             return []
-        case .initialize, .interrupt:
+        case .initialize, .interrupt, .steer:
             return []
         }
     }

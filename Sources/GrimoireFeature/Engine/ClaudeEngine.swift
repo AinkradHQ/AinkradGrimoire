@@ -69,6 +69,10 @@ public final class ClaudeEngine: HarnessEngine {
         try write(wire.control(.model(model)))
     }
 
+    public func setEffort(_ effort: String) throws {
+        try write(wire.control(.effort(effort)))
+    }
+
     public func stop() {
         stopping = true
         process?.stop()

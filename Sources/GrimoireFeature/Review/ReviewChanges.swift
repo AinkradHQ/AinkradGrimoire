@@ -14,6 +14,9 @@ struct FileChange: Equatable, Identifiable, Sendable {
     var status: Status
     /// `nil` for binary files and untracked files (nothing to diff against).
     var diff: AinkradFileDiff?
+    /// The hunks carry the file's own line numbers (git's diff, or an edit found in the file); an agent's edit
+    /// that couldn't be found carries its snippet's.
+    var hasFileLines = true
     var id: String { path }
 
     var added: Int { diff?.hunks.flatMap(\.lines).filter { $0.kind == .insertion }.count ?? 0 }
@@ -84,7 +87,8 @@ enum ReviewChanges {
             FileChange(
                 path: path, status: statuses[path] ?? .modified,
                 diff: hunks[path] == nil && unknown.contains(path)
-                    ? nil : AinkradFileDiff(path: path, original: "", hunks: hunks[path] ?? []))
+                    ? nil : AinkradFileDiff(path: path, original: "", hunks: hunks[path] ?? []),
+                hasFileLines: false)
         }
     }
 
@@ -224,8 +228,39 @@ enum ReviewChanges {
         }
     }
 
-    /// Queued review comments as one message to the agent.
-    static func message(for comments: [(path: String, text: String)]) -> String {
-        "Review comments on your changes:\n" + comments.map { "- \($0.path): \($0.text)" }.joined(separator: "\n")
+    /// Queued review comments as one message to the agent — each place (`file:line`), the line quoted, the
+    /// comment — then `text`, the message they go with.
+    static func message(for comments: [ReviewComment], then text: String = "") -> String {
+        let list = comments.map { comment in
+            let place = comment.line.map { "\(comment.path):\($0)" } ?? comment.path
+            let quote = comment.quote.trimmingCharacters(in: .whitespaces)
+            return "- \(place)\n" + (quote.isEmpty ? "" : "  > \(quote)\n") + "  \(comment.text)"
+        }
+        let block = "Review comments on your changes:\n" + list.joined(separator: "\n")
+        return text.isEmpty ? block : block + "\n\n" + text
     }
+
+    /// The agent's edits renumbered where they sit in their files (read off the main thread), so their headers,
+    /// Forge pills and comments name real lines. A file whose edits can't all be found keeps the snippet's.
+    static func located(_ files: [FileChange], in directory: String) async -> [FileChange] {
+        await Task.detached(priority: .userInitiated) {
+            files.map { file in
+                guard !file.hasFileLines, let diff = file.diff,
+                    let text = try? String(contentsOfFile: ForgeLink.absolute(file.path, in: directory), encoding: .utf8),
+                    let located = diff.located(in: text)
+                else { return file }
+                return FileChange(path: file.path, status: file.status, diff: located)
+            }
+        }.value
+    }
+}
+
+/// A comment on one line of the review, queued for the agent until it is sent.
+struct ReviewComment: Equatable, Sendable {
+    var path: String
+    /// Nil when the file's line numbers aren't known.
+    var line: Int?
+    /// The line commented on.
+    var quote: String
+    var text: String
 }

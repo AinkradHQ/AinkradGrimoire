@@ -101,6 +101,11 @@ public final class OpenCodeEngine: HarnessEngine {
         continuation.yield(.modelChanged(model))
     }
 
+    /// Sent with the next prompt.
+    public func setEffort(_ effort: String) throws {
+        wire.effort = effort
+    }
+
     /// Leaves the session to OpenCode; only this thread's event stream closes.
     public func stop() {
         listening?.cancel()

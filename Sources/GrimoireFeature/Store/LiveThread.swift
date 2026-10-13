@@ -26,6 +26,8 @@ final class LiveThread {
     private(set) var sessionID: String?
     private(set) var model: String?
     private(set) var mode: PermissionMode = .ask
+    /// Reasoning effort for this thread (`Harness.efforts`); nil is the CLI's default.
+    private(set) var effort: String?
     private(set) var costUSD: Double = 0
     /// When the running turn started — drives the status line's clock.
     private(set) var turnStartedAt: Date?
@@ -37,6 +39,10 @@ final class LiveThread {
     var agentName = "The agent"
     /// The composer's text. Kept here so a message the agent never answered can go back into it.
     var draft = ""
+    /// Images waiting in the composer's chips row, sent with the next message.
+    var attachments: [ImageAttachment] = []
+    /// Review comments on lines of the agent's changes, sent ahead of the next message.
+    var reviewComments: [ReviewComment] = []
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
     private(set) var startingSince: Date?
     /// Messages in the stored history this thread opened with.
@@ -91,6 +97,7 @@ final class LiveThread {
         self.sessionID = startOptions.resume
         self.model = model
         self.mode = startOptions.permissionMode ?? .ask
+        self.effort = startOptions.effort
         self.makeEngine = makeEngine
         for (index, entry) in entries.enumerated() {
             if case .tool(let call) = entry { toolIndex[call.id] = index }
@@ -130,8 +137,10 @@ final class LiveThread {
         errorOutput = ""
         launchedAt = clock()
         startingSince = launchedAt
+        var options = startOptions
+        options.effort = effort
         do {
-            try engine.start(startOptions)
+            try engine.start(options)
         } catch {
             self.engine = nil
             startingSince = nil
@@ -152,8 +161,10 @@ final class LiveThread {
         cancelSendAtReset()
         ensureStarted()
         guard let engine else { return }
+        let text = reviewComments.isEmpty ? text : ReviewChanges.message(for: reviewComments, then: text)
         do {
             try engine.send(text, images: images)
+            reviewComments = []
             entries.append(.user(text))
             if status != .needsYou { status = .working }
             if turnStartedAt == nil {
@@ -184,6 +195,11 @@ final class LiveThread {
     func setModel(_ model: String) {
         self.model = model
         try? engine?.setModel(model)
+    }
+
+    func setEffort(_ effort: String) {
+        self.effort = effort
+        try? engine?.setEffort(effort)
     }
 
     func stop() {

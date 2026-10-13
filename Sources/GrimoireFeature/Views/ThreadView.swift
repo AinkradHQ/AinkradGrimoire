@@ -395,7 +395,8 @@ private struct ToolCard: View {
     private var detail: AnyView? {
         switch call.name {
         case "Edit", "MultiEdit":
-            return AnyView(DiffBlock(diff: ToolSummary.editDiff(call.input)))
+            let path = ForgeLink.absolute(call.input["file_path"]?.stringValue ?? "", in: workingDirectory)
+            return AnyView(EditDiffBlock(diff: ToolSummary.editDiff(call.input), path: path))
         case "Patch":
             return AnyView(
                 VStack(alignment: .leading, spacing: skin.size.s6) {

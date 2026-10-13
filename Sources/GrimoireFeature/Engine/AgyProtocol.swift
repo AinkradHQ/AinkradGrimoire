@@ -10,6 +10,7 @@ struct AgyProtocol {
     var conversationID: String?
     var mode: PermissionMode = .ask
     var model: String?
+    var effort: String?
     /// Streamed text per response step, sent whole when the step is done.
     private var text: [Int: String] = [:]
     private var shownTools: Set<Int> = []
@@ -20,6 +21,7 @@ struct AgyProtocol {
         var arguments = ["--input-format", "stream-json", "--output-format", "stream-json"]
         if let conversationID { arguments += ["--conversation", conversationID] }
         if let model { arguments += ["--model", model] }
+        if let effort { arguments += ["--effort", effort] }
         switch mode {
         case .ask: break
         case .acceptEdits: arguments += ["--mode", "accept-edits"]

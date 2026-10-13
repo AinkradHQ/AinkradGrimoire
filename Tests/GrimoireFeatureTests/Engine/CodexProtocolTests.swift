@@ -159,6 +159,17 @@ struct CodexProtocolTests {
         #expect(wire.interrupt()?["params"] == ["threadId": "t1", "turnId": "u1"])
     }
 
+    @Test("a denial's reason steers the running turn, since decline carries no message")
+    func steer() {
+        var wire = started()
+        #expect(wire.steer("use the kit") == nil)
+        _ = wire.decode(#"{"method":"turn/started","params":{"threadId":"t1","turn":{"id":"u1"}}}"#)
+        let steer = wire.steer("use the kit")
+        #expect(steer?["method"] == "turn/steer")
+        #expect(steer?["params"]?["expectedTurnId"] == "u1")
+        #expect(steer?["params"]?["input"]?.arrayValue?.first?["text"] == "use the kit")
+    }
+
     @Test("rate limits become usage windows")
     func usage() {
         var wire = started()

@@ -88,11 +88,35 @@ struct ReviewChangesTests {
         #expect(thread[1].status == .added && thread[1].added == 2)
     }
 
-    @Test("queued comments become one message")
+    @Test("queued comments become one message: file:line, the line quoted, the comment, then your message")
     func message() {
+        let comments = [
+            ReviewComment(path: "A.swift", line: 58, quote: "    .overlay { Rectangle() }", text: "use the kit"),
+            ReviewComment(path: "B.swift", line: nil, quote: "", text: "rename"),
+        ]
         #expect(
-            ReviewChanges.message(for: [("A.swift", "use the kit"), ("B.swift", "rename")])
-                == "Review comments on your changes:\n- A.swift: use the kit\n- B.swift: rename")
+            ReviewChanges.message(for: comments)
+                == "Review comments on your changes:\n- A.swift:58\n  > .overlay { Rectangle() }\n  use the kit\n- B.swift\n  rename")
+        #expect(ReviewChanges.message(for: comments, then: "Then push.").hasSuffix("  rename\n\nThen push."))
+    }
+
+    @MainActor
+    @Test("comments wait on the thread and go ahead of the next message, or alone with Send")
+    func commentsGoWithTheNextMessage() async {
+        let engine = FakeEngine()
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/nowhere")),
+            makeEngine: { engine })
+        let review = ReviewModel(live: live, workingDirectory: "/nowhere", environment: [:])
+        review.addComment("  ", on: "A.swift", line: 3, quote: "x")
+        review.addComment("use the kit", on: "A.swift", line: 3, quote: "let x = 1")
+        #expect(review.comments.count == 1)
+        live.send("Also run the tests.")
+        #expect(engine.sent == ["Review comments on your changes:\n- A.swift:3\n  > let x = 1\n  use the kit\n\nAlso run the tests."])
+        #expect(review.comments.isEmpty)
+        review.addComment("rename", on: "B.swift")
+        review.sendComments()
+        #expect(engine.sent.last == "Review comments on your changes:\n- B.swift\n  rename")
     }
 }
 

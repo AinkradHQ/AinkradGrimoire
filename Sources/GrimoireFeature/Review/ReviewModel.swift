@@ -1,3 +1,4 @@
+import AinkradAppKit
 import Foundation
 import Observation
 
@@ -7,13 +8,23 @@ import Observation
 @Observable
 final class ReviewModel {
     var scope: ReviewScope = .turn {
-        didSet { if scope != oldValue { Task { await load() } } }
+        didSet {
+            guard scope != oldValue else { return }
+            selectedHunks = []
+            Task { await load() }
+        }
     }
+    /// Hunks ticked for "Revert selected".
+    var selectedHunks: Set<HunkKey> = []
+    /// Hunks reverted from the agent's own edits, which the transcript still lists: kept out of this turn and the
+    /// thread (`HunkRevert.signature`).
+    private var reverted: Set<String> = []
     private(set) var files: [FileChange] = []
     private(set) var isLoading = false
     /// The last git failure, shown in the pane until the next action.
     private(set) var error: String?
-    private(set) var comments: [(path: String, text: String)] = []
+    /// Comments queued on lines; they live on the thread, which sends them with its next message.
+    var comments: [ReviewComment] { live.reviewComments }
     var commitMessage = ""
 
     private let live: LiveThread
@@ -34,14 +45,16 @@ final class ReviewModel {
         error = nil
         switch scope {
         case .turn, .thread:
-            let edits = ReviewChanges.fromEntries(live.entries, scope: scope, workingDirectory: workingDirectory)
+            let edits = withoutReverted(
+                ReviewChanges.fromEntries(live.entries, scope: scope, workingDirectory: workingDirectory))
             let unknown = edits.filter { $0.diff == nil }.map(\.path)
+            let located = await ReviewChanges.located(edits, in: workingDirectory)
             guard !unknown.isEmpty else {
-                files = edits
+                files = located
                 return
             }
             let diff = try? await git.run(["diff", "HEAD", "--relative", "--no-color", "--no-ext-diff", "--"] + unknown)
-            files = ReviewChanges.filledFromGit(edits, diff: diff ?? "")
+            files = ReviewChanges.filledFromGit(located, diff: diff ?? "")
         case .uncommitted:
             isLoading = true
             defer { isLoading = false }
@@ -60,17 +73,50 @@ final class ReviewModel {
         }
     }
 
-    func addComment(_ text: String, on path: String) {
+    /// Queues a comment on `path` (at `line`, quoting it) for the agent.
+    func addComment(_ text: String, on path: String, line: Int? = nil, quote: String = "") {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        comments.append((path, text))
+        live.reviewComments.append(ReviewComment(path: path, line: line, quote: quote, text: text))
     }
 
-    /// Sends every queued comment to the agent as one message.
+    /// Sends the queued comments now, as one message.
     func sendComments() {
         guard !comments.isEmpty else { return }
-        live.send(ReviewChanges.message(for: comments))
-        comments = []
+        live.send("")
+    }
+
+    /// Reverts the ticked hunks in the working tree. A file whose hunks can't be placed exactly (it changed since)
+    /// is left untouched and named in the error.
+    func revertSelected() async {
+        let chosen = files.compactMap { file -> (path: String, hunks: [AinkradDiffHunk])? in
+            let hunks = file.diff?.hunks.filter { selectedHunks.contains(HunkKey(path: file.path, hunk: $0.id)) } ?? []
+            return hunks.isEmpty ? nil : (file.path, hunks)
+        }
+        guard !chosen.isEmpty else { return }
+        let refused = await HunkRevert.revert(
+            chosen, in: workingDirectory, trustLineNumbers: scope == .uncommitted)
+        for file in chosen where !refused.contains(file.path) {
+            reverted.formUnion(file.hunks.map { HunkRevert.signature(file.path, $0) })
+        }
+        selectedHunks = []
+        await load()
+        if !refused.isEmpty {
+            error = "Not reverted: \(refused.joined(separator: ", ")) changed since, so nothing was written to "
+                + (refused.count == 1 ? "it." : "them.")
+        }
+    }
+
+    private func withoutReverted(_ files: [FileChange]) -> [FileChange] {
+        guard !reverted.isEmpty else { return files }
+        return files.compactMap { file in
+            guard let diff = file.diff else { return file }
+            let hunks = diff.hunks.filter { !reverted.contains(HunkRevert.signature(file.path, $0)) }
+            if hunks.isEmpty, !diff.hunks.isEmpty { return nil }
+            return FileChange(
+                path: file.path, status: file.status,
+                diff: AinkradFileDiff(path: diff.path, original: diff.original, hunks: hunks))
+        }
     }
 
     /// Discards a file's uncommitted changes (tracked files only).
