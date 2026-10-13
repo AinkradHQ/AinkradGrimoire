@@ -62,8 +62,24 @@ extension GrimoireModel {
         let context = ask.context
         isComposingNewThread = false
         isShowingSettings = false
-        selectedThreadID = nil  // clears any earlier ask, so set it first
+        selectedThreadID = nil  // sets aside any earlier ask, so set it first
+        setAsideAsk()
         forgeAsk = ForgeAsk(project: ask.path, prompt: context == nil ? ask.prompt : ask.request ?? "", context: context)
+    }
+
+    /// Takes the ask out of the main pane. An edited one waits in `setAsideForgeAsk` for the confirm (GD31).
+    func setAsideAsk() {
+        if forgeAsk?.isEdited == true { setAsideForgeAsk = forgeAsk }
+        forgeAsk = nil
+    }
+
+    /// The confirm's Cancel: the set-aside ask comes back to the main pane, in place of what replaced it.
+    func keepEditingAsk() {
+        guard let ask = setAsideForgeAsk else { return }
+        setAsideForgeAsk = nil
+        isShowingSettings = false
+        selectedThreadID = nil
+        forgeAsk = ask
     }
 
     /// Selects `thread` and sends `text` to it once it is open.

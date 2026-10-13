@@ -47,7 +47,7 @@ final class GrimoireModel {
         didSet {
             guard selectedThreadID != oldValue else { return }
             isShowingSettings = false
-            forgeAsk = nil
+            setAsideAsk()
             loadSelectedThread()
         }
     }
@@ -67,6 +67,8 @@ final class GrimoireModel {
     var composerFocusRequest = 0
     /// A request from Forge, waiting in the main pane's inline composer until sent or discarded (see `handleLaunch`).
     var forgeAsk: ForgeAsk?
+    /// An edited ask that opening a thread or a newer ask set aside, until you confirm discarding it (GD31).
+    var setAsideForgeAsk: ForgeAsk?
     /// The review pane beside the conversation; stays open across threads.
     var isReviewOpen = false
     private var reviews: [String: ReviewModel] = [:]
