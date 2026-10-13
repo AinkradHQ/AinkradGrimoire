@@ -5,6 +5,8 @@ import SwiftUI
 /// everything uncommitted), comments for the agent, and the commit.
 struct ReviewPane: View {
     @Bindable var review: ReviewModel
+    /// "Review in Forge": Forge's review of these changes, grouped by turn, with Keep / Undo there.
+    var reviewInForge: (() -> Void)?
     let close: () -> Void
     @State private var reverting: FileChange?
     @Environment(\.ainkradSkin) private var skin
@@ -83,6 +85,10 @@ struct ReviewPane: View {
     @ViewBuilder
     private var footer: some View {
         VStack(alignment: .leading, spacing: skin.size.s8) {
+            if let reviewInForge, !review.files.isEmpty {
+                AinkradButton(title: "Review in Forge ↗", style: .secondary, icon: "hammer", action: reviewInForge)
+                    .frame(maxWidth: .infinity)
+            }
             if !review.comments.isEmpty {
                 AinkradButton(
                     title: review.comments.count == 1 ? "Send 1 comment" : "Send \(review.comments.count) comments",
@@ -117,6 +123,8 @@ private struct FileCard: View {
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
     @Environment(\.ainkradTypography) private var typography
+    @Environment(\.forgeOpener) private var opener
+    @State private var hovering = false
 
     init(
         file: FileChange, comments: [String], canRevert: Bool, startsExpanded: Bool, onRevert: @escaping () -> Void,
@@ -151,6 +159,7 @@ private struct FileCard: View {
                         .font(skin.font(AinkradFontToken(sizeKey: "t10", monospacedDigits: true)))
                         .foregroundStyle(skin.color(skin.text.faint))
                 }
+                ForgeHeaderPill(isHovered: hovering, action: openInForge)
                 if canRevert {
                     AinkradIconButton(
                         systemName: "arrow.uturn.backward", size: skin.size.s22, tooltip: "Revert this file",
@@ -159,6 +168,7 @@ private struct FileCard: View {
             }
             .contentShape(Rectangle())
             .onTapGesture { isExpanded.toggle() }
+            .onHover { hovering = $0 }
 
             if isExpanded {
                 if let diff = file.diff, !diff.hunks.isEmpty {
@@ -192,6 +202,19 @@ private struct FileCard: View {
         }
         .padding(skin.size.s10)
         .background(skin.shape(cut: AinkradRadius.md).fill(theme.surface.opacity(skin.opacity.o60)))
+    }
+
+    /// The file in Forge at its first change.
+    private var openInForge: (() -> Void)? {
+        guard let opener, file.status != .deleted else { return nil }
+        let file = file
+        return {
+            if let hunk = file.diff?.hunks.first {
+                DiffBlock.open(file.path, hunk: hunk, at: hunk.lines.firstIndex { $0.kind != .context } ?? 0, with: opener)
+            } else {
+                opener.open(file.path, nil)
+            }
+        }
     }
 
     private var statusColor: Color {

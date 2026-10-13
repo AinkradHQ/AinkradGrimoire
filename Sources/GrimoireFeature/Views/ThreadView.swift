@@ -28,9 +28,11 @@ struct ThreadView: View {
                 }
             }
             if model.isReviewOpen, let review = model.review(for: thread) {
-                ReviewPane(review: review) { model.isReviewOpen = false }
+                ReviewPane(review: review, reviewInForge: { model.reviewInForge(thread) }) { model.isReviewOpen = false }
             }
         }
+        // Every file:line the thread shows opens in Forge (E5).
+        .environment(\.forgeOpener, ForgeOpener(model: model, directory: thread.workingDirectory))
         .onChange(of: model.terminalProblem) { _, problem in
             if let problem { toasts.show(problem, status: .warning) }
         }
@@ -265,10 +267,13 @@ private struct ToolCard: View {
     /// An approval for this call is pending: amber, "waiting for you", open.
     let isWaiting: Bool
     @State private var isExpanded: Bool
+    @State private var hovering = false
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
     @Environment(\.ainkradTypography) private var typography
+    @Environment(\.forgeOpener) private var opener
+    @Environment(\.ainkradReduceMotion) private var reduceMotion
 
     init(call: ToolCall, workingDirectory: String, isWaiting: Bool) {
         self.call = call
@@ -306,6 +311,8 @@ private struct ToolCard: View {
             headerLabel
         }
         .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(reduceMotion ? nil : skin.animation(skin.motion.hover), value: hovering)
     }
 
     private var headerLabel: some View {
@@ -320,6 +327,7 @@ private struct ToolCard: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: skin.size.s8)
+            ForgeHeaderPill(isHovered: hovering, action: ForgeTarget.action(for: call, opener: opener))
             Text(
                 isWaiting
                     ? "waiting for you" : ToolSummary.result(name: call.name, input: call.input, output: call.result)
@@ -350,6 +358,8 @@ private struct ToolCard: View {
             return AnyView(OutputBlock(text: "$ " + (call.input["command"]?.stringValue ?? ""), maxLines: 8))
         case "Write":
             return AnyView(OutputBlock(text: call.input["content"]?.stringValue ?? "", maxLines: 12))
+        case "Grep" where call.result.flatMap { GrepHits.parse($0.content) } != nil:
+            return AnyView(GrepHits(hits: GrepHits.parse(call.result?.content ?? "") ?? [], maxLines: 20))
         default:
             guard let result = call.result, !result.content.isEmpty else { return nil }
             return AnyView(OutputBlock(text: result.content, maxLines: call.name == "Bash" ? 8 : 20))
@@ -367,50 +377,6 @@ private struct ToolCard: View {
         if isWaiting { return statusColors.warning.opacity(skin.opacity.o60) }
         return skin.material.kind == "glass"
             ? theme.foreground.opacity(skin.opacity.o12) : theme.accentSecondary.opacity(skin.opacity.o25)
-    }
-}
-
-/// An edit's hunks: removed lines red, added green, context muted.
-struct DiffBlock: View {
-    let diff: AinkradFileDiff
-    @Environment(\.ainkradTheme) private var theme
-    @Environment(\.ainkradSkin) private var skin
-    @Environment(\.ainkradStatusColors) private var statusColors
-    @Environment(\.ainkradTypography) private var typography
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(diff.hunks) { hunk in
-                Text("@@ -\(hunk.oldStart),\(hunk.oldCount) +\(hunk.newStart),\(hunk.newCount) @@")
-                    .foregroundStyle(skin.color(skin.text.faint))
-                ForEach(Array(hunk.lines.enumerated()), id: \.offset) { _, line in
-                    row(line)
-                }
-            }
-        }
-        .font(AinkradFontResolver.font(size: 11.5, mono: true, typography: typography))
-        .textSelection(.enabled)
-        .padding(.vertical, skin.size.s6)
-        .padding(.horizontal, skin.size.s8)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(skin.shape(cut: AinkradRadius.sm).fill(theme.background.opacity(skin.opacity.o70)))
-    }
-
-    private func row(_ line: AinkradDiffLine) -> some View {
-        let (sign, color): (String, Color) =
-            switch line.kind {
-            case .insertion: ("+", statusColors.success)
-            case .deletion: ("-", statusColors.danger)
-            case .context: (" ", skin.color(skin.text.muted))
-            }
-        // Long lines wrap under the text, not the sign, so the changed end stays readable.
-        return HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text("\(sign) ")
-            Text(line.text).fixedSize(horizontal: false, vertical: true)
-        }
-        .foregroundStyle(color)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(line.kind == .context ? .clear : color.opacity(skin.opacity.o08))
     }
 }
 
