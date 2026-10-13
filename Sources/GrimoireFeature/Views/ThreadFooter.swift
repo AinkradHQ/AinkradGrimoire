@@ -24,8 +24,17 @@ struct ThreadFooter: View {
             ) {
                 EmptyView()
             } leading: {
-                modeMenu
-                modelMenu
+                // The captions go first when the thread is squeezed (GD10).
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: skin.spacing.sm) {
+                        modeMenu(captions: true)
+                        modelMenu(captions: true)
+                    }
+                    HStack(spacing: skin.spacing.sm) {
+                        modeMenu(captions: false)
+                        modelMenu(captions: false)
+                    }
+                }
             } trailing: {
                 if live.canInterrupt {
                     AinkradButton(title: "Stop", style: .danger, icon: "stop.fill") { live.interrupt() }
@@ -72,7 +81,7 @@ struct ThreadFooter: View {
         }
     }
 
-    private var modeMenu: some View {
+    private func modeMenu(captions: Bool) -> some View {
         AinkradMenuButton(
             items: PermissionMode.allCases.map { mode in
                 AinkradMenuItem(title: mode.title, systemName: mode == live.mode ? "checkmark" : nil) {
@@ -80,16 +89,16 @@ struct ThreadFooter: View {
                 }
             }
         ) {
-            PullDownLabel { MenuValue(caption: "Mode", value: live.mode.title) }
+            PullDownLabel { MenuValue(caption: captions ? "Mode" : nil, value: live.mode.title) }
         }
         .fixedSize()
         .help("Permission mode")
     }
 
     @ViewBuilder
-    private var modelMenu: some View {
+    private func modelMenu(captions: Bool) -> some View {
         if harness == .claude {
-            claudeModelMenu
+            claudeModelMenu(captions: captions)
         } else {
             // The models the agent listed; it applies the pick from the next turn.
             AinkradMenuButton(
@@ -99,14 +108,16 @@ struct ThreadFooter: View {
                     }
                 }
             ) {
-                PullDownLabel { MenuValue(caption: "Model", value: model.modelName(live.model, for: harness)) }
+                PullDownLabel {
+                    MenuValue(caption: captions ? "Model" : nil, value: model.modelName(live.model, for: harness))
+                }
             }
             .fixedSize()
             .help("Model")
         }
     }
 
-    private var claudeModelMenu: some View {
+    private func claudeModelMenu(captions: Bool) -> some View {
         AinkradMenuButton(
             items: ["opus", "sonnet", "haiku"].map { alias in
                 // The CLI reports a full id (`claude-opus-5-5`); a pick here is the alias itself.
@@ -116,7 +127,7 @@ struct ThreadFooter: View {
             }
         ) {
             PullDownLabel {
-                MenuValue(caption: "Model", value: live.model.map(ModelName.display) ?? "Default")
+                MenuValue(caption: captions ? "Model" : nil, value: live.model.map(ModelName.display) ?? "Default")
             }
         }
         .fixedSize()
@@ -137,16 +148,18 @@ extension PermissionMode {
 
 /// "MODE Ask": a faint caption and the value, inside a pull-down label.
 private struct MenuValue: View {
-    let caption: String
+    let caption: String?
     let value: String
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
 
     var body: some View {
         HStack(spacing: skin.size.s6) {
-            Text(skin.labelCased(caption))
-                .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
-                .foregroundStyle(skin.color(skin.text.faint))
+            if let caption {
+                Text(skin.labelCased(caption))
+                    .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
+                    .foregroundStyle(skin.color(skin.text.faint))
+            }
             Text(value)
                 .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                 .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))

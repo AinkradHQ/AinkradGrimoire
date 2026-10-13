@@ -34,8 +34,16 @@ struct ThreadView: View {
         }
     }
 
-    @ViewBuilder
+    /// In a squeezed thread (GD10) the buttons fold into the More menu rather than push the header off the edge.
     private var actions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: skin.size.s6) { buttons }
+            more(moreItems(folding: true))
+        }
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
         AinkradIconButton(systemName: "terminal", size: skin.size.s30, tooltip: "Open a terminal here (Rune)") {
             model.openTerminal(for: thread)
         }
@@ -48,7 +56,11 @@ struct ThreadView: View {
                 model.forkThread(thread)
             }
         }
-        AinkradMenuButton(items: moreItems) {
+        more(moreItems(folding: false))
+    }
+
+    private func more(_ items: [AinkradMenuItem]) -> some View {
+        AinkradMenuButton(items: items) {
             Image(systemName: "ellipsis")
                 .frame(width: skin.size.s30, height: skin.size.s30)
                 .contentShape(Rectangle())
@@ -58,9 +70,20 @@ struct ThreadView: View {
     }
 
     /// Resume and reveal only where they lead somewhere: a draft has no session yet, and only Claude and
-    /// Codex keep a session file (GD21).
-    private var moreItems: [AinkradMenuItem] {
+    /// Codex keep a session file (GD21). `folding` leads with the header's buttons.
+    private func moreItems(folding: Bool) -> [AinkradMenuItem] {
         var items: [AinkradMenuItem] = []
+        if folding {
+            items.append(
+                AinkradMenuItem(title: "Open a terminal here", systemName: "terminal") { model.openTerminal(for: thread) })
+            items.append(AinkradMenuItem(title: "Review changes", systemName: "plusminus") { model.isReviewOpen.toggle() })
+            if thread.harness != .agy {
+                items.append(
+                    AinkradMenuItem(title: "Fork this thread", systemName: "arrow.triangle.branch") {
+                        model.forkThread(thread)
+                    })
+            }
+        }
         if let command = Self.resumeCommand(for: thread) {
             items.append(
                 AinkradMenuItem(title: "Copy resume command", systemName: "doc.on.doc") {

@@ -69,6 +69,12 @@ final class ScreenSnapshotTests: XCTestCase {
             DiffBlock(diff: diff).padding(12), named: "diff-long-lines", size: CGSize(width: 360, height: 220))
     }
 
+    /// GD10: a squeezed thread folds its header buttons into More and drops the composer's captions.
+    func testThreadInANarrowPane() throws {
+        let model = try threadModel(.claude)
+        try assertThread(model, named: "thread-narrow", width: 300)
+    }
+
     /// GD16: at 720 pt the sidebar gives way and Settings stacks its controls under their labels; nothing clips.
     func testSettingsInANarrowWindow() async throws {
         let (model, root) = try await sidebarModel()
