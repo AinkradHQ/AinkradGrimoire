@@ -1,4 +1,5 @@
 import AinkradAppKit
+import AppKit
 import SwiftUI
 
 /// An edit's hunks: removed lines red, added green, context muted.
@@ -10,6 +11,10 @@ struct DiffBlock: View {
     var showsGutter = false
     /// A tick box before each hunk header, for the review pane's "Revert selected".
     var selection: ((AinkradDiffHunk) -> Binding<Bool>)?
+    /// A click on a line (⌘-click still opens Forge): the review pane's line comments.
+    var onLineTap: ((AinkradDiffHunk, Int) -> Void)?
+    /// Drawn under a line — the review pane's comment field.
+    var lineAccessory: ((AinkradDiffHunk, Int) -> AnyView?)?
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradStatusColors) private var statusColors
@@ -27,15 +32,23 @@ struct DiffBlock: View {
                         .foregroundStyle(skin.color(skin.text.faint))
                 }
                 ForEach(Array(hunk.lines.enumerated()), id: \.offset) { index, line in
-                    if let opener, !diff.path.isEmpty {
-                        // Every line opens in Forge where it now is (a removed line: where it was).
-                        ForgeRow(
-                            open: { Self.open(diff.path, hunk: hunk, at: index, with: opener) },
-                            label: hasFileLines ? "↗ :\(Self.fileLine(hunk, at: index))" : "↗ Forge"
-                        ) { row(line, number: Self.fileLine(hunk, at: index)) }
-                    } else {
-                        row(line, number: Self.fileLine(hunk, at: index))
+                    Group {
+                        if let opener, !diff.path.isEmpty {
+                            // Every line opens in Forge where it now is (a removed line: where it was).
+                            ForgeRow(
+                                open: { Self.open(diff.path, hunk: hunk, at: index, with: opener) },
+                                label: hasFileLines ? "↗ :\(Self.fileLine(hunk, at: index))" : "↗ Forge"
+                            ) { row(line, number: Self.fileLine(hunk, at: index)) }
+                        } else {
+                            row(line, number: Self.fileLine(hunk, at: index))
+                        }
                     }
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            if let onLineTap, !NSEvent.modifierFlags.contains(.command) { onLineTap(hunk, index) }
+                        }, including: onLineTap == nil ? .subviews : .all)
+                    if let accessory = lineAccessory?(hunk, index) { accessory }
                 }
             }
         }
@@ -88,15 +101,16 @@ struct EditDiffBlock: View {
                 let path = path
                 let text = await Task.detached(priority: .utility) { try? String(contentsOfFile: path, encoding: .utf8) }
                     .value
-                located = text.flatMap { DiffBlock.located(diff, in: $0) }
+                located = text.flatMap { diff.located(in: $0) }
             }
     }
 }
 
-extension DiffBlock {
-    /// `diff` (an edit's snippet) renumbered to where it sits in `file`: each hunk found by its new side (the edit
-    /// was applied) or else its old side (it waits for approval). Nil when any hunk can't be found.
-    static func located(_ diff: AinkradFileDiff, in file: String) -> AinkradFileDiff? {
+extension AinkradFileDiff {
+    /// This diff (an edit's snippet) renumbered to where it sits in `file`: each hunk found by its new side (the
+    /// edit was applied) or else its old side (it waits for approval). Nil when any hunk can't be found.
+    func located(in file: String) -> AinkradFileDiff? {
+        let diff = self
         var delta = 0  // lines the earlier hunks added
         var hunks: [AinkradDiffHunk] = []
         for hunk in diff.hunks {
@@ -117,6 +131,9 @@ extension DiffBlock {
         }
         return hunks.isEmpty ? nil : AinkradFileDiff(path: diff.path, original: diff.original, hunks: hunks)
     }
+}
+
+extension DiffBlock {
 
     /// Hunk line `index`'s line in the file: the new side's, or the old side's for a removed line.
     static func fileLine(_ hunk: AinkradDiffHunk, at index: Int) -> Int {

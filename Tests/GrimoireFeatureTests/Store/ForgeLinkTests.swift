@@ -37,11 +37,11 @@ struct ForgeLinkTests {
         ]
         let diff = ToolSummary.editDiff(input)
         let applied = "a\na\na\nb\nnew1\nnew2\nc\nd\n"
-        let located = DiffBlock.located(diff, in: applied)?.hunks.first
+        let located = diff.located(in: applied)?.hunks.first
         #expect(located?.newStart == 4 && located?.oldStart == 4)
         // Waiting for approval: the old side is still in the file.
-        #expect(DiffBlock.located(diff, in: "x\nb\nold\nc\n")?.hunks.first?.oldStart == 2)
-        #expect(DiffBlock.located(diff, in: "nothing like it\n") == nil, "falls back to the snippet")
+        #expect(diff.located(in: "x\nb\nold\nc\n")?.hunks.first?.oldStart == 2)
+        #expect(diff.located(in: "nothing like it\n") == nil, "falls back to the snippet")
     }
 
     @Test func aTurnNoticeNamesTheFilesItsEditsWrote() throws {

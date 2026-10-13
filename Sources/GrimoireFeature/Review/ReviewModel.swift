@@ -23,7 +23,8 @@ final class ReviewModel {
     private(set) var isLoading = false
     /// The last git failure, shown in the pane until the next action.
     private(set) var error: String?
-    private(set) var comments: [(path: String, text: String)] = []
+    /// Comments queued on lines; they live on the thread, which sends them with its next message.
+    var comments: [ReviewComment] { live.reviewComments }
     var commitMessage = ""
 
     private let live: LiveThread
@@ -47,12 +48,13 @@ final class ReviewModel {
             let edits = withoutReverted(
                 ReviewChanges.fromEntries(live.entries, scope: scope, workingDirectory: workingDirectory))
             let unknown = edits.filter { $0.diff == nil }.map(\.path)
+            let located = await ReviewChanges.located(edits, in: workingDirectory)
             guard !unknown.isEmpty else {
-                files = edits
+                files = located
                 return
             }
             let diff = try? await git.run(["diff", "HEAD", "--relative", "--no-color", "--no-ext-diff", "--"] + unknown)
-            files = ReviewChanges.filledFromGit(edits, diff: diff ?? "")
+            files = ReviewChanges.filledFromGit(located, diff: diff ?? "")
         case .uncommitted:
             isLoading = true
             defer { isLoading = false }
@@ -71,17 +73,17 @@ final class ReviewModel {
         }
     }
 
-    func addComment(_ text: String, on path: String) {
+    /// Queues a comment on `path` (at `line`, quoting it) for the agent.
+    func addComment(_ text: String, on path: String, line: Int? = nil, quote: String = "") {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        comments.append((path, text))
+        live.reviewComments.append(ReviewComment(path: path, line: line, quote: quote, text: text))
     }
 
-    /// Sends every queued comment to the agent as one message.
+    /// Sends the queued comments now, as one message.
     func sendComments() {
         guard !comments.isEmpty else { return }
-        live.send(ReviewChanges.message(for: comments))
-        comments = []
+        live.send("")
     }
 
     /// Reverts the ticked hunks in the working tree. A file whose hunks can't be placed exactly (it changed since)

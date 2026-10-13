@@ -46,7 +46,7 @@ struct ReviewPane: View {
                                 canRevert: review.scope == .uncommitted && file.status != .untracked,
                                 startsExpanded: review.files.count <= 3, selection: selection(in: file),
                                 onRevert: { reverting = file },
-                                onComment: { review.addComment($0, on: file.path) })
+                                onComment: { review.addComment($0, on: file.path, line: $1, quote: $2) })
                         }
                     }
                 }
@@ -166,9 +166,12 @@ private struct FileCard: View {
     let canRevert: Bool
     let selection: (AinkradDiffHunk) -> Binding<Bool>
     let onRevert: () -> Void
-    let onComment: (String) -> Void
+    /// A comment's text, its line (nil when the file's numbers aren't known) and the line quoted.
+    let onComment: (String, Int?, String) -> Void
     @State private var isExpanded: Bool
     @State private var comment = ""
+    /// The line whose comment field is open: (hunk id, line index).
+    @State private var commenting: LineRef?
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
@@ -179,7 +182,7 @@ private struct FileCard: View {
     init(
         file: FileChange, comments: [String], canRevert: Bool, startsExpanded: Bool,
         selection: @escaping (AinkradDiffHunk) -> Binding<Bool>, onRevert: @escaping () -> Void,
-        onComment: @escaping (String) -> Void
+        onComment: @escaping (String, Int?, String) -> Void
     ) {
         self.selection = selection
         self.file = file
@@ -226,7 +229,15 @@ private struct FileCard: View {
 
             if isExpanded {
                 if let diff = file.diff, !diff.hunks.isEmpty {
-                    DiffBlock(diff: diff, hasFileLines: true, selection: selection)
+                    DiffBlock(
+                        diff: diff, hasFileLines: file.hasFileLines, selection: selection,
+                        onLineTap: { hunk, index in
+                            comment = ""
+                            commenting = LineRef(hunk: hunk.id, index: index)
+                        },
+                        lineAccessory: { hunk, index in
+                            commenting == LineRef(hunk: hunk.id, index: index) ? AnyView(commentField(hunk, index)) : nil
+                        })
                 }
                 ForEach(Array(comments.enumerated()), id: \.offset) { _, text in
                     VStack(alignment: .leading, spacing: skin.size.s2) {
@@ -244,18 +255,28 @@ private struct FileCard: View {
                         skin.shape(cut: AinkradRadius.sm).stroke(
                             statusColors.warning.opacity(skin.opacity.o50), lineWidth: 1))
                 }
-                HStack(spacing: skin.size.s6) {
-                    AinkradTextField(text: $comment, placeholder: "Comment for the agent…")
-                    AinkradIconButton(systemName: "plus.bubble", size: skin.size.s26, tooltip: "Add comment") {
-                        onComment(comment)
-                        comment = ""
-                    }
-                    .disabled(comment.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
             }
         }
         .padding(skin.size.s10)
         .cardSurface(theme.surface.opacity(skin.opacity.o85))
+    }
+
+    /// Under a clicked line: what you want the agent to know about it. Return queues it; Esc or ✕ closes.
+    private func commentField(_ hunk: AinkradDiffHunk, _ index: Int) -> some View {
+        let line = DiffBlock.fileLine(hunk, at: index)
+        let add = {
+            onComment(comment, file.hasFileLines ? line : nil, hunk.lines[index].text)
+            comment = ""
+            commenting = nil
+        }
+        return HStack(spacing: skin.size.s6) {
+            AinkradTextField(
+                text: $comment, placeholder: file.hasFileLines ? "Comment on line \(line) — ↵ adds it" : "Comment — ↵ adds it")
+                .onSubmit(add)
+                .onExitCommand { commenting = nil }
+            AinkradIconButton(systemName: "xmark", size: skin.size.s22, tooltip: "Cancel") { commenting = nil }
+        }
+        .padding(.vertical, skin.size.s4)
     }
 
     /// The file in Forge at its first change.
@@ -277,4 +298,10 @@ private struct FileCard: View {
         case .deleted: statusColors.danger
         }
     }
+}
+
+/// A line in a file card's diff: its hunk's id and its index in the hunk.
+private struct LineRef: Equatable {
+    var hunk: Int
+    var index: Int
 }

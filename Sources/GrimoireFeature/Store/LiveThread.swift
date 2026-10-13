@@ -41,6 +41,8 @@ final class LiveThread {
     var draft = ""
     /// Images waiting in the composer's chips row, sent with the next message.
     var attachments: [ImageAttachment] = []
+    /// Review comments on lines of the agent's changes, sent ahead of the next message.
+    var reviewComments: [ReviewComment] = []
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
     private(set) var startingSince: Date?
     /// Messages in the stored history this thread opened with.
@@ -159,8 +161,10 @@ final class LiveThread {
         cancelSendAtReset()
         ensureStarted()
         guard let engine else { return }
+        let text = reviewComments.isEmpty ? text : ReviewChanges.message(for: reviewComments, then: text)
         do {
             try engine.send(text, images: images)
+            reviewComments = []
             entries.append(.user(text))
             if status != .needsYou { status = .working }
             if turnStartedAt == nil {

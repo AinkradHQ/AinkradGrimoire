@@ -64,4 +64,37 @@ final class MockupFeatureSnapshotTests: XCTestCase {
             ThreadFooter(live: live, model: model, workingDirectory: "/repo", harness: .claude), named: "composer-images",
             size: CGSize(width: 820, height: 190))
     }
+
+    /// Mockup 5: a ticked hunk for Revert selected, a line comment waiting for the next message, Send 1 comment.
+    func testReviewWithHunkSelectionAndAComment() async throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-review-\(UUID())")
+        let file = dir.appendingPathComponent("Sidebar/SidebarRow.swift")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let new = "        .background {\n            if isSelected { Capsule().glassEffect(.regular) }\n        }"
+        try ((1...57).map { "// \($0)" } + ["        .padding(.horizontal, skin.size.s8)", new, "        .contentShape(Rectangle())"])
+            .joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+        let edit = ThreadEntry.tool(
+            ToolCall(
+                id: "e1", name: "Edit",
+                input: [
+                    "file_path": .string(file.path),
+                    "old_string": "        .overlay(alignment: .bottom) { Rectangle().frame(height: 1) }",
+                    "new_string": .string(new),
+                ], result: ToolOutput(content: "ok", isError: false)))
+        let live = LiveThread(
+            entries: [.user("Make the selection a glass capsule."), edit],
+            startOptions: EngineStartOptions(workingDirectory: dir), makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: dir.path, environment: [:])
+        await review.load()
+        let hunk = try XCTUnwrap(review.files.first?.diff?.hunks.first)
+        XCTAssertEqual(hunk.newStart, 59, "found in the file")
+        review.selectedHunks = [HunkKey(path: "Sidebar/SidebarRow.swift", hunk: hunk.id)]
+        review.addComment(
+            "Use the kit's row background instead of a raw Capsule.", on: "Sidebar/SidebarRow.swift", line: 60,
+            quote: "if isSelected { Capsule().glassEffect(.regular) }")
+        review.commitMessage = "fix(sidebar): glass capsule selection"
+        Snapshot.assertMatches(
+            ReviewPane(review: review, close: {}), named: "review-hunks-comment", size: CGSize(width: 440, height: 520))
+    }
 }
