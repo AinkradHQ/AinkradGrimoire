@@ -73,6 +73,28 @@ final class NarrowSnapshotTests: XCTestCase {
         assertWindow(model, named: "narrow-review-520", width: 520)
     }
 
+    /// GD34: an approval asked while the review stands in for the thread docks under the review.
+    func testApprovalWhileReviewStandsIn() async throws {
+        let turn = try FixtureReplay.turn(.claude)
+        let model = makeModel()
+        model.startThread(project: "/tmp/work", prompt: turn.prompt, model: nil, mode: .ask, worktree: false)
+        let live = try XCTUnwrap(model.current)
+        live.onSessionID = nil
+        FixtureReplay.play(turn.steps, into: live)
+        live.send("Now run the tests")
+        live.apply(.block(messageID: "m9", .toolUse(id: "t9", name: "Bash", input: ["command": "make test"])))
+        live.apply(
+            .approval(
+                ApprovalRequest(
+                    id: "r9", toolUseID: "t9", toolName: "Bash", input: ["command": "make test"], summary: "",
+                    suggestions: [])))
+        model.isReviewOpen = true
+        let review = try XCTUnwrap(model.review(for: try XCTUnwrap(model.selectedThread)))
+        review.scope = .thread
+        await review.load()
+        assertWindow(model, named: "narrow-review-approval-520", width: 520)
+    }
+
     // MARK: - Fixtures
 
     private func assertWindow(_ model: GrimoireModel, named name: String, width: CGFloat) {
