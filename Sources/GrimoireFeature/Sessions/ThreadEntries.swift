@@ -17,6 +17,8 @@ struct ToolCall: Equatable, Sendable {
     var input: JSONValue
     /// `nil` while the tool is still running (or its result was never stored).
     var result: ToolOutput?
+    /// The command the agent wrote, when a hook rewrote it before it ran; `input` then holds what runs.
+    var rewrittenFrom: String? = nil
 }
 
 struct ToolOutput: Equatable, Sendable {

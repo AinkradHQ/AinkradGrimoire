@@ -236,6 +236,14 @@ private struct ToolCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s8) {
             header
+            if let original = call.rewrittenFrom {
+                // The header shows what runs (as the approval does); this is what the agent wrote (GD3).
+                Text("Rewritten by a hook from: \(original)")
+                    .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                    .foregroundStyle(skin.color(skin.text.faint))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             if isExpanded || isWaiting, let body = detail {
                 body
             }
