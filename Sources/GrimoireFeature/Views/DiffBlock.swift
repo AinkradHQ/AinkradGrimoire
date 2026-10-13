@@ -4,6 +4,8 @@ import SwiftUI
 /// An edit's hunks: removed lines red, added green, context muted.
 struct DiffBlock: View {
     let diff: AinkradFileDiff
+    /// The hunks carry the file's own line numbers (git's diff in the review pane); an edit's snippet doesn't.
+    var hasFileLines = false
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradStatusColors) private var statusColors
@@ -18,7 +20,10 @@ struct DiffBlock: View {
                 ForEach(Array(hunk.lines.enumerated()), id: \.offset) { index, line in
                     if let opener, !diff.path.isEmpty {
                         // Every line opens in Forge where it now is (a removed line: where it was).
-                        ForgeRow(open: { Self.open(diff.path, hunk: hunk, at: index, with: opener) }) { row(line) }
+                        ForgeRow(
+                            open: { Self.open(diff.path, hunk: hunk, at: index, with: opener) },
+                            label: hasFileLines ? "↗ :\(Self.fileLine(hunk, at: index))" : "↗ Forge"
+                        ) { row(line) }
                     } else {
                         row(line)
                     }
@@ -53,6 +58,15 @@ struct DiffBlock: View {
 
 
 extension DiffBlock {
+    /// Hunk line `index`'s line in the file: the new side's, or the old side's for a removed line.
+    static func fileLine(_ hunk: AinkradDiffHunk, at index: Int) -> Int {
+        let before = hunk.lines.prefix(index)
+        if hunk.lines[index].kind == .deletion {
+            return hunk.oldStart + before.filter { $0.kind != .insertion }.count
+        }
+        return hunk.newStart + before.filter { $0.kind != .deletion }.count
+    }
+
     /// Opens `path` in Forge at hunk line `index`: found by the hunk's new side in the file (edits carry no line
     /// numbers), the hunk's own number when it is not there.
     static func open(_ path: String, hunk: AinkradDiffHunk, at index: Int, with opener: ForgeOpener) {

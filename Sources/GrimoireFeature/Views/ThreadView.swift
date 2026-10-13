@@ -17,7 +17,9 @@ struct ThreadView: View {
             // Too narrow for both (GD26): the review pane stands in for the thread until it is closed.
             if review == nil || !reviewReplacesThread { conversation }
             if let review {
-                ReviewPane(review: review, fills: reviewReplacesThread, reviewInForge: { model.reviewInForge(thread) }) {
+                // Without Forge there is nothing to review in (the host says so; an older host doesn't).
+                let forge: (() -> Void)? = model.apps?.appAvailability(appID: ForgeLink.appID) == false ? nil : { model.reviewInForge(thread) }
+                ReviewPane(review: review, fills: reviewReplacesThread, reviewInForge: forge) {
                     model.isReviewOpen = false
                 }
             }
@@ -31,7 +33,7 @@ struct ThreadView: View {
 
     private var conversation: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ThreadHeader(thread: thread, model: model.current?.model) {
+            ThreadHeader(thread: thread, model: model.current?.model, cost: model.current?.costUSD ?? 0) {
                 actions
             }
             if let live = model.current {
@@ -74,9 +76,7 @@ struct ThreadView: View {
 
     private func more(_ items: [AinkradMenuItem]) -> some View {
         AinkradMenuButton(items: items) {
-            Image(systemName: "ellipsis")
-                .frame(width: skin.size.s30, height: skin.size.s30)
-                .contentShape(Rectangle())
+            IconMenuLabel(systemName: "ellipsis", size: skin.size.s30)
         }
         .fixedSize()
         .help("More")
@@ -184,9 +184,15 @@ private struct EntryRow: View {
         case .user(let text):
             UserBubble(text: text)
         case .text(let text):
+            // Inline code as cyan chips, fenced code quiet and syntax-coloured (mockup 10, GP21/GP46).
             AinkradMarkdownText(text: text)
+                .replyStyle()
                 .textSelection(.enabled)
                 .frame(maxWidth: skin.size.s860, alignment: .leading)
+        case .note(let text):
+            Text(text)
+                .font(skin.font(AinkradFontToken(sizeKey: "t13")))
+                .foregroundStyle(skin.color(skin.text.faint))
         case .thinking(let text):
             ThinkingRow(text: text)
         case .tool(let call):
@@ -247,10 +253,10 @@ private struct ThinkingRow: View {
             Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
                 isExpanded.toggle()
             } label: {
+                // "▸ Thought" (mockup 2 adds "for 6s": no engine reports how long it thought).
                 HStack(spacing: skin.size.s6) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(skin.font(AinkradFontToken(sizeKey: "t9", weight: "semibold")))
-                    Text("Thinking")
+                    Text(isExpanded ? "▾" : "▸")
+                    Text("Thought")
                 }
                 .font(skin.font(AinkradFontToken(sizeKey: "t12")))
                 .foregroundStyle(skin.color(skin.text.faint))
@@ -277,6 +283,7 @@ private struct ToolCard: View {
     let isWaiting: Bool
     @State private var isExpanded: Bool
     @State private var hovering = false
+    @State private var isWide = true
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
@@ -288,7 +295,9 @@ private struct ToolCard: View {
         self.call = call
         self.workingDirectory = workingDirectory
         self.isWaiting = isWaiting
-        _isExpanded = State(initialValue: ["Edit", "MultiEdit", "Write", "Patch", "Bash"].contains(call.name))
+        // Grep's hits show at rest (mockup 11); reads and other searches stay one line.
+        let hits = call.name == "Grep" && call.result.flatMap { GrepHits.parse($0.content) } != nil
+        _isExpanded = State(initialValue: hits || ["Edit", "MultiEdit", "Write", "Patch", "Bash"].contains(call.name))
     }
 
     var body: some View {
@@ -305,12 +314,19 @@ private struct ToolCard: View {
             if isExpanded || isWaiting, let body = detail {
                 body
             }
+            if isWaiting {
+                // Why it asks (mockup 4): where it runs, and that no allow rule covers it.
+                Text("Runs in \((workingDirectory as NSString).abbreviatingWithTildeInPath) · not covered by your allow rules")
+                    .font(skin.font(AinkradFontToken(sizeKey: "t11")))
+                    .foregroundStyle(skin.color(skin.text.faint))
+                    .lineLimit(2)
+            }
         }
         .padding(.horizontal, skin.size.s12)
         .padding(.vertical, skin.size.s8)
         .frame(maxWidth: skin.size.s860, alignment: .leading)
-        .background(skin.shape(cut: AinkradRadius.md).fill(theme.surface.opacity(skin.opacity.o60)))
-        .overlay(skin.shape(cut: AinkradRadius.md).stroke(stroke, lineWidth: 1))
+        .onGeometryChange(for: Bool.self) { $0.size.width >= skin.size.s560 } action: { isWide = $0 }
+        .cardSurface(theme.surface.opacity(skin.opacity.o85), rim: isWaiting ? statusColors.warning.opacity(skin.opacity.o60) : nil)
     }
 
     /// The expander, then "↗ Forge" beside it rather than inside it, so each is its own keyboard stop (GD28).
@@ -322,7 +338,11 @@ private struct ToolCard: View {
                 headerLabel
             }
             .buttonStyle(.plain)
-            ForgeHeaderPill(isHovered: hovering, action: ForgeTarget.action(for: call, opener: opener))
+            // The full "↗ Open in Forge at 40" where the card is wide; the pill keeps its room at rest (GD28), so a
+            // narrow card keeps the short one and its argument stays readable.
+            ForgeHeaderPill(
+                isHovered: hovering, label: isWide ? ForgeTarget.label(for: call) : "↗ Forge",
+                action: ForgeTarget.action(for: call, opener: opener))
             resultLabel
                 .contentShape(Rectangle())
                 .onTapGesture { isExpanded.toggle() }
@@ -348,15 +368,28 @@ private struct ToolCard: View {
         .contentShape(Rectangle())
     }
 
-    private var resultLabel: some View {
-        Text(isWaiting ? "waiting for you" : ToolSummary.result(name: call.name, input: call.input, output: call.result))
-            .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
-            .foregroundStyle(
-                isWaiting
-                    ? statusColors.warning
-                    : call.result?.isError == true ? statusColors.danger : skin.color(skin.text.faint)
-            )
-            .lineLimit(1)
+    /// "waiting for you", an edit's green +4 / red −2, a command's green "exit 0 · 48s", else the summary.
+    @ViewBuilder private var resultLabel: some View {
+        let font = skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true))
+        if isWaiting {
+            Text("waiting for you").font(font).foregroundStyle(statusColors.warning)
+        } else if call.result?.isError != true, let counts = ToolSummary.counts(name: call.name, input: call.input),
+            call.result != nil
+        {
+            HStack(spacing: skin.size.s4) {
+                Text("+\(counts.added)").foregroundStyle(statusColors.success)
+                Text("−\(counts.removed)").foregroundStyle(statusColors.danger)
+            }
+            .font(font)
+        } else if call.name == "Bash", let result = call.result, !result.isError {
+            Text(["exit 0", call.duration.map(StatusTime.short)].compactMap { $0 }.joined(separator: " · "))
+                .font(font).foregroundStyle(statusColors.success).lineLimit(1)
+        } else {
+            Text(ToolSummary.result(name: call.name, input: call.input, output: call.result))
+                .font(font)
+                .foregroundStyle(call.result?.isError == true ? statusColors.danger : skin.color(skin.text.faint))
+                .lineLimit(1)
+        }
     }
 
     private var detail: AnyView? {
@@ -387,13 +420,6 @@ private struct ToolCard: View {
         guard let result = call.result else { return theme.accentSecondary }
         return result.isError ? statusColors.danger : statusColors.success
     }
-
-    /// Glass frames controls with a neutral hairline, Neon with its accent rim.
-    private var stroke: Color {
-        if isWaiting { return statusColors.warning.opacity(skin.opacity.o60) }
-        return skin.material.kind == "glass"
-            ? theme.foreground.opacity(skin.opacity.o12) : theme.accentSecondary.opacity(skin.opacity.o25)
-    }
 }
 
 /// The agent's todo list, updated in place.
@@ -423,7 +449,8 @@ private struct PlanCard: View {
         .padding(.horizontal, skin.size.s12)
         .padding(.vertical, skin.size.s10)
         .frame(maxWidth: skin.size.s860, alignment: .leading)
-        .background(skin.shape(cut: AinkradRadius.md).fill(theme.surface.opacity(skin.opacity.o60)))
+        // `.todo.cut`: the strong fill under Neon, the white 6 % one under Glass.
+        .cardSurface(theme.surfaceElevated.opacity(skin.opacity.o95), glass: skin.color(skin.palette.white).opacity(skin.opacity.o06))
     }
 
     @ViewBuilder
