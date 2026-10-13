@@ -69,8 +69,11 @@ struct ImageAttachmentTests {
             entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
             makeEngine: { engine })
         let image = EngineImage(mediaType: "image/png", base64: "AAA")
-        live.send("look", images: [image])
-        #expect(engine.images == [[image]])
+        live.send("look", images: [image], imageNames: ["sidebar.png"])
+        live.send("and?")
+        #expect(engine.images == [[image], []])
+        // The transcript's bubble shows what went with each message.
+        #expect(live.sentImages == [0: ["sidebar.png"]])
         #expect(Harness.allCases.filter(\.acceptsImages) == [.claude, .codex, .opencode])
     }
 }

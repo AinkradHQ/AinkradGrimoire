@@ -12,6 +12,7 @@ struct ThreadFooter: View {
     @Environment(\.ainkradReduceMotion) private var reduceMotion
 
     private var draft: String { live.draft }
+    private var isBusy: Bool { live.canInterrupt && live.pendingApproval == nil }
 
     var body: some View {
         let limit = model.limit(for: harness)
@@ -64,14 +65,12 @@ struct ThreadFooter: View {
                         tooltip: "Attach images (or drop or paste them)"
                     ) { Attach.choose(into: live) }
                 }
-                // The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
-                if live.canInterrupt, live.pendingApproval == nil {
-                    AinkradButton(title: "Stop", style: .danger, icon: "stop.fill") { live.interrupt() }
-                        .fixedSize()
-                        .help("Stop (⌘.)")
-                }
             }
             .paletteSuggestionRows()
+            // Busy (mockup 1): the red outline "■ Stop", and Send's ↑ becomes ↵, which queues the next message.
+            // The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
+            .stopButton("■ Stop", action: isBusy ? { live.interrupt() } : nil)
+            .sendGlyph(isBusy ? "↵" : "↑")
             .background {
                 if harness.acceptsImages { PasteImageMonitor { Attach.paste($0, into: live) } }
             }
@@ -92,9 +91,9 @@ struct ThreadFooter: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         live.draft = ""
-        let images = live.attachments.map(\.image)
+        let attachments = live.attachments
         live.attachments = []
-        live.send(text, images: images)
+        live.send(text, images: attachments.map(\.image), imageNames: attachments.map(\.name))
     }
 
     private func limitBar(_ limit: UsageLimit) -> some View {
@@ -257,9 +256,11 @@ struct ApprovalBar: View {
                 title: title, actions: isDenying ? denyActions : actions
             )
             .labelCasedCaption()
+            .iconGlyph("⌁")
             if isDenying {
                 AinkradTextField(text: $reason, placeholder: "Reason for the agent (optional) — ↵ denies")
                     .onSubmit(deny)
+                    .focusOnAppear()
                     .padding(.horizontal, skin.size.s14)
                     .padding(.bottom, skin.spacing.xs)
                     .transition(.opacity)
@@ -274,9 +275,13 @@ struct ApprovalBar: View {
             AinkradDecisionBar.Action(title: "Deny…", style: .ghost) { isDenying = true }.borderless().secondaryAccent()
         ]
         if live.canAllowAlways {
-            let rule = ApprovalBarRule.rule(request.suggestions).map { "Always allow \($0)" } ?? "Always allow"
-            actions.append(
-                AinkradDecisionBar.Action(title: rule, style: .secondary) { live.answer(.allowAlways) }.secondaryAccent())
+            // A rule reads as a faint mono suffix ("Always allow `git push *`"); a mode as words.
+            let rule = ApprovalBarRule.rule(request.suggestions)
+            let isMode = rule == ApprovalBarRule.acceptEdits
+            let always = AinkradDecisionBar.Action(
+                title: isMode ? "Always allow \(ApprovalBarRule.acceptEdits)" : "Always allow", style: .secondary
+            ) { live.answer(.allowAlways) }.secondaryAccent()
+            actions.append(isMode ? always : rule.map(always.detail) ?? always)
         }
         actions.append(.init(title: "Allow once ↵", style: .primary) { live.answer(.allow) })
         return actions
@@ -296,6 +301,8 @@ struct ApprovalBar: View {
 }
 
 enum ApprovalBarRule {
+    static let acceptEdits = "accept edits for this session"
+
     /// What the agent is told on a denial: your reason, or a plain "denied".
     static func denial(_ reason: String) -> String {
         let reason = reason.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -310,7 +317,7 @@ enum ApprovalBarRule {
                 return content.hasSuffix(":*") ? content.dropLast(2) + " *" : content
             }
             if suggestion["type"]?.stringValue == "setMode", suggestion["mode"]?.stringValue == "acceptEdits" {
-                return "accept edits for this session"
+                return acceptEdits
             }
         }
         return nil
