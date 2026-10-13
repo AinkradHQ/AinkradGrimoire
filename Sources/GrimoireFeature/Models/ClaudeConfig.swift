@@ -6,8 +6,10 @@ struct ClaudeConfig: Equatable {
     var servers = 0
     var hooks = 0
     var skills = 0
-    /// `~/.claude.json` names a signed-in account. The plan (Max, Pro) is not recorded there.
+    /// `~/.claude.json` names a signed-in account.
     var isSignedIn = false
+    /// The account's plan ("Max", "Pro", "Team"), from its `organizationType` (`claude_max`); nil when unknown.
+    var plan: String?
 
     /// `claudeHome` is `~/.claude` (its parent holds `.claude.json`). Missing or unreadable files count as none.
     static func read(claudeHome: URL) -> ClaudeConfig {
@@ -23,7 +25,9 @@ struct ClaudeConfig: Equatable {
         }
         if let state = json(claudeHome.deletingLastPathComponent().appendingPathComponent(".claude.json")) {
             config.servers = (state["mcpServers"] as? [String: Any])?.count ?? 0
-            config.isSignedIn = state["oauthAccount"] is [String: Any]
+            let account = state["oauthAccount"] as? [String: Any]
+            config.isSignedIn = account != nil
+            config.plan = (account?["organizationType"] as? String).flatMap(plan)
         }
         let skills = (try? fm.contentsOfDirectory(atPath: claudeHome.appendingPathComponent("skills").path)) ?? []
         config.skills = skills.filter { !$0.hasPrefix(".") }.count
@@ -34,6 +38,12 @@ struct ClaudeConfig: Equatable {
     var summary: String {
         func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
         return [count(servers, "server"), count(hooks, "hook"), count(skills, "skill")].joined(separator: " · ")
+    }
+
+    /// `claude_max` → "Max"; anything not shaped `claude_<plan>` is unknown.
+    static func plan(_ organizationType: String) -> String? {
+        guard organizationType.hasPrefix("claude_"), organizationType.count > 7 else { return nil }
+        return organizationType.dropFirst(7).capitalized
     }
 
     private static func json(_ url: URL) -> [String: Any]? {

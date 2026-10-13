@@ -162,3 +162,18 @@ struct PasteImageMonitor: NSViewRepresentable {
         }
     }
 }
+
+extension View {
+    /// Focuses the field inside as it appears — the deny reason, a line comment. The kit's `AinkradTextField` has
+    /// no focus hook, so its container takes `.focused` and SwiftUI moves focus to the field inside. A turn later:
+    /// focus set in the same update as the click doesn't stick.
+    func focusOnAppear() -> some View { modifier(FocusOnAppear()) }
+}
+
+private struct FocusOnAppear: ViewModifier {
+    @FocusState private var isFocused: Bool
+
+    func body(content: Content) -> some View {
+        content.focused($isFocused).onAppear { DispatchQueue.main.async { isFocused = true } }
+    }
+}

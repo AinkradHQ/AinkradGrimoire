@@ -41,6 +41,8 @@ final class LiveThread {
     var draft = ""
     /// Images waiting in the composer's chips row, sent with the next message.
     var attachments: [ImageAttachment] = []
+    /// The names of the images sent with each message this run, by its index in `entries` — the bubble's chips.
+    private(set) var sentImages: [Int: [String]] = [:]
     /// Review comments on lines of the agent's changes, sent ahead of the next message.
     var reviewComments: [ReviewComment] = []
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
@@ -156,7 +158,7 @@ final class LiveThread {
     }
 
     /// Sends a message. While a turn runs the CLI queues it and answers after.
-    func send(_ text: String, images: [EngineImage] = []) {
+    func send(_ text: String, images: [EngineImage] = [], imageNames: [String] = []) {
         hitLimit = false
         cancelSendAtReset()
         ensureStarted()
@@ -165,6 +167,8 @@ final class LiveThread {
         do {
             try engine.send(text, images: images)
             reviewComments = []
+            // Set even when empty: a message taken back out of the transcript left its index free.
+            sentImages[entries.count] = imageNames.isEmpty ? nil : imageNames
             entries.append(.user(text))
             if status != .needsYou { status = .working }
             if turnStartedAt == nil {

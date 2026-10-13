@@ -25,7 +25,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: skin.size.s18) {
                     group("Agents") {
-                        agentRow(.claude, detail: detail(model.cli) + (config.isSignedIn ? " · signed in" : "")) {
+                        agentRow(.claude, detail: detail(model.cli) + signedIn) {
                             AinkradButton(title: "Change…", style: .secondary) { chooseCLI() }.secondaryAccent().fixedSize()
                         }
                         agentRow(.codex, detail: detail(model.status(of: .codex))) { none }
@@ -95,6 +95,12 @@ struct SettingsView: View {
     }
 
     @State private var config = ClaudeConfig()
+
+    /// " · signed in (Max)" (mockup 8); the plan only when the account names it.
+    private var signedIn: String {
+        guard config.isSignedIn else { return "" }
+        return config.plan.map { " · signed in (\($0))" } ?? " · signed in"
+    }
 
     private var none: some View {
         Text("—").foregroundStyle(skin.color(skin.text.faint))

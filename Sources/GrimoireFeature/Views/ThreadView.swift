@@ -148,7 +148,7 @@ private struct ConversationView<Trailer: View>: View {
                 LazyVStack(alignment: .leading, spacing: skin.size.s14) {
                     ForEach(Array(live.entries.enumerated()), id: \.offset) { index, entry in
                         EntryRow(
-                            entry: entry, workingDirectory: workingDirectory,
+                            entry: entry, images: live.sentImages[index] ?? [], workingDirectory: workingDirectory,
                             waitingToolID: live.pendingApproval?.toolUseID
                         ).id(index)
                     }
@@ -175,6 +175,8 @@ private struct ConversationView<Trailer: View>: View {
 
 private struct EntryRow: View {
     let entry: ThreadEntry
+    /// The images sent with a message, by name.
+    let images: [String]
     let workingDirectory: String
     let waitingToolID: String?
     @Environment(\.ainkradSkin) private var skin
@@ -182,7 +184,7 @@ private struct EntryRow: View {
     var body: some View {
         switch entry {
         case .user(let text):
-            UserBubble(text: text)
+            UserBubble(text: text, images: images)
         case .text(let text):
             // Inline code as cyan chips, fenced code quiet and syntax-coloured (mockup 10, GP21/GP46).
             AinkradMarkdownText(text: text)
@@ -206,13 +208,24 @@ private struct EntryRow: View {
 /// The person's message: a tinted card on the right, markdown rendered as replies are (GD1).
 private struct UserBubble: View {
     let text: String
+    var images: [String] = []
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
 
     var body: some View {
         HStack {
             Spacer(minLength: skin.size.s120)
-            message
+            VStack(alignment: .trailing, spacing: skin.size.s8) {
+                // The images sent with it, as the composer's chips showed them (mockup 1's 🖼 chip).
+                if !images.isEmpty {
+                    FlowLayout(spacing: skin.size.s6) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { _, name in
+                            AinkradChip(label: name, systemName: "photo").fixedSize()
+                        }
+                    }
+                }
+                message
+            }
                 .textSelection(.enabled)
                 .padding(.horizontal, skin.size.s14)
                 .padding(.vertical, skin.size.s10)

@@ -16,7 +16,6 @@ struct NewThreadSheet: View {
     @State private var worktree: Bool
     @State private var harness: Harness
     @State private var prompt = ""
-    @State private var copiedInstall = false
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradTypography) private var typography
@@ -46,24 +45,32 @@ struct NewThreadSheet: View {
             }
 
             row("Agent") {
-                // Every agent (mockup 7); one that isn't installed says so and offers its install command.
+                // Every agent (mockup 7); one that isn't installed is disabled, and Install… copies its command.
                 HStack(spacing: skin.size.s8) {
                     AinkradSegmentedPicker(items: Harness.allCases, selection: $harness) {
                         $0 == .claude ? "Claude Code" : $0.displayName
                     }
+                    .disabledOptions { !Self.isFound($0, in: model) }
                     .fixedSize()
-                    if !isInstalled {
-                        Text("Not installed").font(skin.font(AinkradFontToken(sizeKey: "t11")))
-                            .foregroundStyle(skin.color(skin.text.faint))
-                        if let command = NoAgentView.installCommand(harness) {
-                            AinkradButton(title: copiedInstall ? "Copied" : "Install…", style: .ghost) {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(command, forType: .string)
-                                copiedInstall = true
+                    let missing = Harness.allCases.filter { !Self.isFound($0, in: model) }
+                        .compactMap { harness in NoAgentView.installCommand(harness).map { (harness, $0) } }
+                    if !missing.isEmpty {
+                        AinkradMenuButton(
+                            items: missing.map { harness, command in
+                                AinkradMenuItem(
+                                    title: "Copy the \(harness.displayName) install command", systemName: "doc.on.doc"
+                                ) {
+                                    NSPasteboard.general.clearContents()
+                                    NSPasteboard.general.setString(command, forType: .string)
+                                }
                             }
-                            .borderless().secondaryAccent().fixedSize()
-                            .help(command)
+                        ) {
+                            Text(skin.labelCased("Install…"))
+                                .font(skin.font(AinkradFontToken(sizeKey: "t11", weight: "semibold")))
+                                .foregroundStyle(theme.accentSecondary)
                         }
+                        .fixedSize()
+                        .help(missing.map(\.1).joined(separator: "\n"))
                     } else if harness == .agy {
                         Text("agy runs tools per its own permission setting")
                             .font(skin.font(AinkradFontToken(sizeKey: "t11")))
@@ -110,7 +117,6 @@ struct NewThreadSheet: View {
         .onChange(of: harness) {
             if !canUseWorktree { worktree = false }
             otherModel = nil
-            copiedInstall = false
         }
     }
 
@@ -181,15 +187,15 @@ struct NewThreadSheet: View {
         return ([parts[0], "…"] + parts.suffix(2)).joined(separator: "/")
     }
 
-    private var isInstalled: Bool {
+    private var isInstalled: Bool { Self.isFound(harness, in: model) }
+
+    static func isFound(_ harness: Harness, in model: GrimoireModel) -> Bool {
         if case .found = model.status(of: harness) { true } else { false }
     }
 
     /// The agents whose CLI was found; Claude when none is, so the sheet still lays out.
     static func installed(_ model: GrimoireModel) -> [Harness] {
-        let found = Harness.allCases.filter {
-            if case .found = model.status(of: $0) { true } else { false }
-        }
+        let found = Harness.allCases.filter { isFound($0, in: model) }
         return found.isEmpty ? [.claude] : found
     }
 

@@ -129,30 +129,29 @@ struct ReviewPane: View {
             if !review.files.isEmpty {
                 HStack(spacing: skin.size.s8) {
                     AinkradButton(title: "Revert selected", style: .secondary) { isRevertingHunks = true }
-                        .secondaryAccent().fixedSize().frame(maxWidth: .infinity)
+                        .secondaryAccent().fullWidth()
                         .disabled(review.selectedHunks.isEmpty)
                         .help("Tick hunks to revert them")
                     if let forge, review.comments.isEmpty {
                         AinkradButton(title: "Review in Forge ↗", style: .secondary, action: forge)
-                            .secondaryAccent().fixedSize().frame(maxWidth: .infinity)
+                            .secondaryAccent().fullWidth()
                     }
                     if !review.comments.isEmpty {
                         AinkradButton(
                             title: review.comments.count == 1 ? "Send 1 comment" : "Send \(review.comments.count) comments",
                             style: .secondary
                         ) { review.sendComments() }
-                        .secondaryAccent().fixedSize().frame(maxWidth: .infinity)
+                        .secondaryAccent().fullWidth()
                     }
                 }
             }
             AinkradTextField(text: $review.commitMessage, placeholder: "Commit message")
             HStack(spacing: skin.size.s8) {
-                AinkradButton(title: "Commit", style: .primary) { Task { await review.commit() } }
-                    .fixedSize().frame(maxWidth: .infinity)
+                AinkradButton(title: "Commit", style: .primary) { Task { await review.commit() } }.fullWidth()
                 AinkradButton(title: "Commit & open PR", style: .secondary) {
                     Task { await review.commitAndOpenPullRequest() }
                 }
-                .secondaryAccent().fixedSize().frame(maxWidth: .infinity)
+                .secondaryAccent().fullWidth()
             }
             .disabled(review.commitMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
         }
@@ -274,6 +273,7 @@ private struct FileCard: View {
                 text: $comment, placeholder: file.hasFileLines ? "Comment on line \(line) — ↵ adds it" : "Comment — ↵ adds it")
                 .onSubmit(add)
                 .onExitCommand { commenting = nil }
+                .focusOnAppear()
             AinkradIconButton(systemName: "xmark", size: skin.size.s22, tooltip: "Cancel") { commenting = nil }
         }
         .padding(.vertical, skin.size.s4)
