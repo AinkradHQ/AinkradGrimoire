@@ -255,12 +255,12 @@ private struct ThreadRow: View {
                 StatusDot(status: status, isLimited: limit != nil)
                 Text(thread.title)
                     .font(skin.font(AinkradFontToken(sizeKey: "t13")))
-                    .foregroundStyle(theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
+                    .foregroundStyle(onSelection ?? theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
                     .lineLimit(1)
                 Spacer(minLength: skin.size.s4)
                 Text(RelativeTime.short(thread.lastActivity))
                     .font(skin.font(AinkradFontToken(sizeKey: "t10", monospacedDigits: true)))
-                    .foregroundStyle(skin.color(skin.text.faint))
+                    .foregroundStyle(onSelection?.opacity(skin.opacity.o85) ?? skin.color(skin.text.faint))
             }
             // On a selected row (a solid accent fill under Glass) badges take the
             // foreground colour so they stay readable.
@@ -271,11 +271,11 @@ private struct ThreadRow: View {
                 }
                 if let limit {
                     Text(limit.resetsAt.map { "limit · \(UsageLimit.clock($0))" } ?? "limit")
-                        .foregroundStyle(statusColors.warning)
+                        .foregroundStyle(onSelection ?? statusColors.warning)
                 } else if status == .needsYou {
-                    Text("needs you").foregroundStyle(statusColors.warning)
+                    Text("needs you").foregroundStyle(onSelection ?? statusColors.warning)
                 } else if case .failed = status {
-                    Text("failed").foregroundStyle(statusColors.danger)
+                    Text("failed").foregroundStyle(onSelection ?? statusColors.danger)
                 }
             }
             .font(skin.font(AinkradFontToken(sizeKey: "t11")))
@@ -288,6 +288,15 @@ private struct ThreadRow: View {
         .contentShape(Rectangle())
         .onHover { isHovered = $0 }
     }
+
+    private var onSelection: Color? { selectedRowText(skin, isSelected: isSelected) }
+}
+
+/// The colour readable on a selected row's accent fill under Glass, as the kit's own row text takes (GD27, Forge
+/// FD31): there a status's red or amber, or the faint time, sank into the blue. The status dot keeps its colour.
+/// Nil under Neon, whose selection is a faint wash.
+func selectedRowText(_ skin: AinkradSkin, isSelected: Bool) -> Color? {
+    isSelected && skin.usesNativeGlass ? skin.color(skin.palette.accentPrimary).contrastingText : nil
 }
 
 private struct ShowAllRow: View {
