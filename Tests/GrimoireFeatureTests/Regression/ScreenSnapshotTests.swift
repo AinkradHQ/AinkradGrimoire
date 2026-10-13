@@ -94,6 +94,14 @@ final class ScreenSnapshotTests: XCTestCase {
         Snapshot.assertMatches(MainPane(model: model), named: "no-agent", size: CGSize(width: 520, height: 560))
     }
 
+    /// GD29 (mockup 12 D): a search with no hits offers "Clear search".
+    func testSearchWithNoHits() async throws {
+        let (model, root) = try await sidebarModel()
+        defer { try? FileManager.default.removeItem(at: root) }
+        model.searchText = "kubernetes ingress"
+        Snapshot.assertMatches(Sidebar(model: model), named: "search-no-hits", size: CGSize(width: 300, height: 420))
+    }
+
     // MARK: - Fixtures
 
     private func assertThread(_ model: GrimoireModel, named name: String, width: CGFloat = threadSize.width) throws {

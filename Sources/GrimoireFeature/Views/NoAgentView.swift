@@ -99,7 +99,9 @@ private struct InstallRow: View {
                     .textSelection(.enabled)
                     .fixedSize()
             }
-            AinkradIconButton(systemName: copied ? "checkmark" : "doc.on.doc", tooltip: "Copy") { copy() }
+            // "Copy", flipping to "✓ Copied" for 1.5 s (mockup 12 A).
+            AinkradButton(title: copied ? "Copied" : "Copy", style: .ghost, icon: copied ? "checkmark" : nil) { copy() }
+                .fixedSize()
                 .opacity(isHovering || copied ? 1 : skin.opacity.o55)
         }
         .padding(.leading, skin.size.s12)

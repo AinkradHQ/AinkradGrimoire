@@ -53,8 +53,11 @@ struct Sidebar: View {
                         projectSection(project)
                     }
                     if let title = Self.noMatchTitle(query: model.searchText, visible: model.visibleProjects) {
+                        // Search already covers every project, so "Clear search" is the one way out (mockup 12 D).
                         AinkradEmptyState(
-                            icon: "magnifyingglass", title: title, message: "Search looks at thread titles and project names.")
+                            icon: "magnifyingglass", title: title, message: "Search looks at thread titles and project names.",
+                            actionTitle: "Clear search"
+                        ) { model.searchText = "" }
                         .padding(.top, skin.size.s20)
                     }
                     if model.hiddenProjectCount > 0 {
