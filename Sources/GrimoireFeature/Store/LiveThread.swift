@@ -20,6 +20,8 @@ final class LiveThread {
     private(set) var status: Status = .idle
     private(set) var pendingApproval: ApprovalRequest?
     private(set) var commands: [SlashCommandInfo] = []
+    /// Which of `commands` are skills, when the CLI says (Claude's init does).
+    private(set) var skills: Set<String> = []
     /// The CLI's id for this session; set once the agent has started.
     private(set) var sessionID: String?
     private(set) var model: String?
@@ -27,6 +29,12 @@ final class LiveThread {
     private(set) var costUSD: Double = 0
     /// When the running turn started — drives the status line's clock.
     private(set) var turnStartedAt: Date?
+    /// The running turn's output tokens by assistant message, as the CLI reports them.
+    private var turnTokens: [String: Int] = [:]
+    /// The last finished turn this run: how long it took and the tokens it wrote (nil when not reported).
+    private(set) var lastTurn: (duration: TimeInterval, tokens: Int?)?
+    /// The agent's name for Grimoire's own notes ("Claude did not answer…").
+    var agentName = "The agent"
     /// The composer's text. Kept here so a message the agent never answered can go back into it.
     var draft = ""
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
@@ -62,6 +70,8 @@ final class LiveThread {
     private var toolIndex: [String: Int] = [:]
     /// Plans by their tool id, so an updated plan replaces its card.
     private var planIndex: [String: Int] = [:]
+    /// When each running tool started, for its card's duration.
+    private var toolStarted: [String: Date] = [:]
     private let clock: () -> Date
     /// When the running engine was spawned, and what it printed to stderr since.
     private var launchedAt: Date?
@@ -94,6 +104,19 @@ final class LiveThread {
     var canInterrupt: Bool { status == .working || status == .needsYou }
     /// "Always allow" is offered (button and ⌘⌥↩) only when the agent suggested a standing rule.
     var canAllowAlways: Bool { pendingApproval?.suggestions.isEmpty == false }
+    /// The running turn's tokens so far; nil before the CLI reports any.
+    var turnOutputTokens: Int? { turnTokens.isEmpty ? nil : turnTokens.values.reduce(0, +) }
+    /// How long the running turn has taken, by this thread's clock.
+    var turnElapsed: TimeInterval? { turnStartedAt.map { max(clock().timeIntervalSince($0), 0) } }
+    /// What the running turn is doing: the description of the command running now (Claude's Bash carries one).
+    var activity: String? {
+        for entry in entries.reversed() {
+            guard case .tool(let call) = entry else { continue }
+            guard call.result == nil, let text = call.input["description"]?.stringValue, !text.isEmpty else { return nil }
+            return text
+        }
+        return nil
+    }
 
     // MARK: - Actions
 
@@ -133,7 +156,10 @@ final class LiveThread {
             try engine.send(text, images: images)
             entries.append(.user(text))
             if status != .needsYou { status = .working }
-            if turnStartedAt == nil { turnStartedAt = Date() }
+            if turnStartedAt == nil {
+                turnStartedAt = clock()
+                turnTokens = [:]
+            }
         } catch {
             status = .failed("Couldn't send: \(error.localizedDescription)")
         }
@@ -210,7 +236,7 @@ final class LiveThread {
         if failure.kind == .usageLimit {
             hitLimit = true
             _ = restoreUnanswered(removing: false)
-            entries.append(.text("*\(Self.limitNote)*"))
+            entries.append(.note(Self.limitNote(agentName)))
             onUsageLimit?(UsageLimit.resetHint(in: failure.output))
             return
         }
@@ -218,7 +244,7 @@ final class LiveThread {
         self.failure = failure
     }
 
-    static let limitNote = "The agent did not answer — its usage limit was reached."
+    static func limitNote(_ agent: String) -> String { "\(agent) did not answer — the plan’s usage limit was reached." }
 
     /// Puts the last message back in the composer when nothing answered it. `removing` takes it out of the
     /// transcript too (it never got anywhere). True when the composer now holds a message.
@@ -246,6 +272,7 @@ final class LiveThread {
             sessionID = info.sessionID
             if !info.model.isEmpty { model = info.model }
             if let mode = info.permissionMode { self.mode = mode }
+            skills = Set(info.skills)
         case .commands(let list):
             commands = list
         case .textDelta(let messageID, let text):
@@ -255,6 +282,7 @@ final class LiveThread {
         case .toolResult(let id, let content, let isError):
             guard let index = toolIndex[id], case .tool(var call) = entries[index] else { return }
             call.result = ToolOutput(content: content, isError: isError)
+            call.duration = toolStarted.removeValue(forKey: id).map { clock().timeIntervalSince($0) }
             entries[index] = .tool(call)
         case .approval(let request):
             adoptRewrite(request)
@@ -269,11 +297,15 @@ final class LiveThread {
             self.model = model
         case .status:
             break
+        case .tokens(let messageID, let output):
+            turnTokens[messageID] = max(turnTokens[messageID] ?? 0, output)
         case .turnFinished(let result):
             streaming = nil
             let started = turnStartedAt
             defer { onTurnFinished?(started) }
             turnStartedAt = nil
+            if let started { lastTurn = (clock().timeIntervalSince(started), result.outputTokens ?? turnOutputTokens) }
+            turnTokens = [:]
             costUSD += result.costUSD ?? 0
             switch result.outcome {
             case .success, .interrupted: status = pendingApproval == nil ? .idle : .needsYou
@@ -360,6 +392,7 @@ final class LiveThread {
                 }
             } else {
                 toolIndex[id] = entries.count
+                toolStarted[id] = clock()
                 entries.append(.tool(ToolCall(id: id, name: name, input: input, result: nil)))
             }
         }

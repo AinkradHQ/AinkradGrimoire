@@ -51,8 +51,16 @@ struct ThreadEntriesTests {
             ToolSummary.argument(name: "Edit", input: ["file_path": "/repo/Sources/A.swift"], workingDirectory: cwd)
                 == "Sources/A.swift")
         #expect(
-            ToolSummary.argument(name: "Read", input: ["file_path": "/elsewhere/B.swift"], workingDirectory: cwd)
+            ToolSummary.argument(name: "Edit", input: ["file_path": "/elsewhere/B.swift"], workingDirectory: cwd)
                 == "/elsewhere/B.swift")
+        // A Read names the file and the range read (mockup 11, GP14).
+        #expect(
+            ToolSummary.argument(name: "Read", input: ["file_path": "/repo/Sources/B.swift"], workingDirectory: cwd)
+                == "B.swift")
+        #expect(
+            ToolSummary.argument(
+                name: "Read", input: ["file_path": "/repo/B.swift", "offset": .number(40), "limit": .number(41)], workingDirectory: cwd)
+                == "B.swift · lines 40–80")
         #expect(
             ToolSummary.argument(
                 name: "Grep", input: ["pattern": "stroke", "path": "/repo/Sources"], workingDirectory: cwd)
