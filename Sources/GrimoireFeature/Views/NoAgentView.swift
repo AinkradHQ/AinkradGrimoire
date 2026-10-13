@@ -27,7 +27,9 @@ struct NoAgentView: View {
                 .fixedSize(horizontal: false, vertical: true)
             VStack(spacing: skin.size.s4) {
                 ForEach(Harness.allCases, id: \.self) { harness in
-                    InstallRow(harness: harness.displayName, command: Self.installCommand(harness))
+                    if let command = Self.installCommand(harness) {
+                        InstallRow(harness: harness.displayName, command: command)
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: skin.size.s6) {
@@ -51,12 +53,13 @@ struct NoAgentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    static func installCommand(_ harness: Harness) -> String {
+    /// Only commands known to be right; agy has no package-manager install to point at.
+    static func installCommand(_ harness: Harness) -> String? {
         switch harness {
         case .claude: "npm install -g @anthropic-ai/claude-code"
         case .codex: "npm install -g @openai/codex"
-        case .opencode: "brew install sst/tap/opencode"
-        case .agy: "brew install --cask antigravity"
+        case .opencode: "brew install anomalyco/tap/opencode"
+        case .agy: nil
         }
     }
 
