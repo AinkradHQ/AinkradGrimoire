@@ -25,7 +25,8 @@ packages:
     # 51655c2: AinkradMenuButton.kitMenuUnderGlass() opt-in (#112, Forge FD20).
     # 966326c: kit parity batches 1+2 (#113, #114) for the Forge/Grimoire mockups.
     # a8c1fd7: kit parity batch 3 (#115) for the Forge/Grimoire mockups.
-    revision: a8c1fd7745e8500a209bce435f6875148d908713
+    # a352acd: kit parity batches 3+4 (#115, #116) for the Forge/Grimoire mockups.
+    revision: a352acdcf4f7c468843f8a3bcdbed34785185db7
 targets:
   GrimoireFeature:
     type: library.static

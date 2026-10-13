@@ -129,8 +129,8 @@ struct MainPane: View {
                     .secondaryAction("Open folder…") {
                         if let url = FolderPicker.choose() { model.openFolder(url) }
                     }
-                    // The cyan ❖ at 80 % and a cyan "Open folder…" (mockup 9 B).
-                    .glyph("❖").iconTint(theme.accentSecondary.opacity(skin.opacity.o80)).secondaryAccent()
+                    // The cyan ❖ at 40 pt and 80 %, and a cyan "Open folder…" (mockup 9 B, GP44).
+                    .glyph("❖").glyphSize(skin.size.s40).iconTint(theme.accentSecondary.opacity(skin.opacity.o80)).secondaryAccent()
                 } else if model.selectedThread == nil, model.selectedThreadID == nil {
                     AinkradEmptyState(
                         icon: "text.bubble", title: "Pick a thread",

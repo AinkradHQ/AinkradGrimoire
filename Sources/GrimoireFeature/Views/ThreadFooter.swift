@@ -38,28 +38,17 @@ struct ThreadFooter: View {
             ) {
                 AttachmentChips(live: live)
             } leading: {
-                // The captions go first when the thread is squeezed (GD10).
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: skin.spacing.sm) {
-                        modeMenu(captions: true)
-                        modelMenu(captions: true)
-                        EffortMenu(live: live, harness: harness, captions: true)
-                    }
-                    HStack(spacing: skin.spacing.sm) {
-                        modeMenu(captions: false)
-                        modelMenu(captions: false)
-                        EffortMenu(live: live, harness: harness, captions: false)
-                    }
-                    HStack(spacing: skin.spacing.sm) {
-                        modeMenu(captions: false)
-                        modelMenu(captions: false)
-                    }
+                // Waiting on the limit's reset, the strip keeps only Mode (mockup 12 D).
+                if limit != nil {
+                    modeMenu(captions: true)
+                } else {
+                    strip
                 }
             } trailing: {
                 if let at = live.sendAt {
                     queued(at)
                 }
-                if harness.acceptsImages {
+                if harness.acceptsImages, limit == nil {
                     AinkradIconButton(
                         systemName: "paperclip", size: AinkradComposer<EmptyView, EmptyView, EmptyView>.controlHeight,
                         tooltip: "Attach images (or drop or paste them)"
@@ -67,17 +56,19 @@ struct ThreadFooter: View {
                 }
             }
             .paletteSuggestionRows()
-            // Busy (mockup 1): the red outline "■ Stop", and Send's ↑ becomes ↵, which queues the next message.
-            // The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
+            // Busy (mockup 1): the red "■ Stop" on its faint red fill, and Send's ↑ becomes a lit ↵, which queues
+            // the next message. The approval bar is the one thing to answer while it waits (mockup 4); ⌘. still stops.
             .stopButton("■ Stop", action: isBusy ? { live.interrupt() } : nil)
+            .tintedStopButton()
             .sendGlyph(isBusy ? "↵" : "↑")
+            .sendStaysLit(when: isBusy)
+            // Waiting on the limit's reset, only the field steps back; the strip and Send stay lit (mockup 12 D).
+            .textFieldDimmed(limit != nil)
             .background {
                 if harness.acceptsImages { PasteImageMonitor { Attach.paste($0, into: live) } }
             }
             // ⌘L: a fresh editor autofocuses — the kit's composer has no other focus hook. The draft is kept.
             .id(model.composerFocusRequest)
-            // Waiting on the limit's reset, the composer steps back (mockup 12 D).
-            .opacity(limit != nil ? skin.opacity.o60 : 1)
             .padding(.horizontal, skin.size.s14)
             .padding(.bottom, skin.size.s14)
         }
@@ -85,6 +76,26 @@ struct ThreadFooter: View {
         // the CLI's own commands by the time you look.
         .onChange(of: live.draft) { _, text in if !text.isEmpty { live.ensureStarted() } }
         .animation(reduceMotion ? nil : skin.animation(skin.motion.present), value: limit)
+    }
+
+    /// Mode, Model and Effort; the captions go first when the thread is squeezed (GD10).
+    private var strip: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: skin.spacing.sm) {
+                modeMenu(captions: true)
+                modelMenu(captions: true)
+                EffortMenu(live: live, harness: harness, captions: true)
+            }
+            HStack(spacing: skin.spacing.sm) {
+                modeMenu(captions: false)
+                modelMenu(captions: false)
+                EffortMenu(live: live, harness: harness, captions: false)
+            }
+            HStack(spacing: skin.spacing.sm) {
+                modeMenu(captions: false)
+                modelMenu(captions: false)
+            }
+        }
     }
 
     private func send() {
@@ -101,7 +112,7 @@ struct ThreadFooter: View {
         let canQueue =
             limit.resetsAt != nil && live.sendAt == nil && !draft.trimmingCharacters(in: .whitespaces).isEmpty
         return LimitBar(
-            limit: limit, now: model.now,
+            limit: limit, now: model.now, plan: harness == .claude ? model.claudePlan : nil,
             sendAtReset: canQueue ? { limit.resetsAt.map(live.sendAtReset) } : nil,
             alternative: alternative,
             carryOver: {
@@ -237,6 +248,11 @@ struct MenuValue: View {
 
 /// The approval the agent is waiting on, docked above the composer. "Deny…" asks for an optional reason the agent
 /// sees (mockup 4); ⌘⌫ still denies at once.
+extension AinkradComposer {
+    /// `sendStaysLit()` only while `lit` — idle, an empty draft's ↑ still reads as disabled.
+    fileprivate func sendStaysLit(when lit: Bool) -> Self { lit ? sendStaysLit() : self }
+}
+
 struct ApprovalBar: View {
     let request: ApprovalRequest
     let workingDirectory: String
@@ -244,6 +260,7 @@ struct ApprovalBar: View {
     /// Internal so a snapshot can show the reason field open.
     @State var isDenying = false
     @State private var reason = ""
+    @FocusState private var reasonFocused: Bool
     @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
@@ -258,12 +275,15 @@ struct ApprovalBar: View {
             .labelCasedCaption()
             .iconGlyph("⌁")
             if isDenying {
-                AinkradTextField(text: $reason, placeholder: "Reason for the agent (optional) — ↵ denies")
-                    .onSubmit(deny)
-                    .focusOnAppear()
-                    .padding(.horizontal, skin.size.s14)
-                    .padding(.bottom, skin.spacing.xs)
-                    .transition(.opacity)
+                AinkradTextField(
+                    text: $reason, placeholder: "Reason for the agent (optional) — ↵ denies", focus: $reasonFocused
+                )
+                .onSubmit(deny)
+                // A turn later: focus set in the same update as the click doesn't stick.
+                .onAppear { DispatchQueue.main.async { reasonFocused = true } }
+                .padding(.horizontal, skin.size.s14)
+                .padding(.bottom, skin.spacing.xs)
+                .transition(.opacity)
             }
         }
         .id(request.id)

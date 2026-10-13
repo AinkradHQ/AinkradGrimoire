@@ -23,6 +23,47 @@ final class MockupFeatureSnapshotTests: XCTestCase {
             }, named: "approval-deny", size: CGSize(width: 820, height: 170))
     }
 
+    /// Deny… puts the caret in the reason field: typing goes straight to the agent's reason.
+    func testDenyReasonFieldTakesFocus() {
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { FakeEngine() })
+        let request = ApprovalRequest(
+            id: "r1", toolUseID: "t1", toolName: "Bash", input: ["command": "git push"], summary: "", suggestions: [])
+        let (window, _) = Snapshot.host(
+            ApprovalBar(request: request, workingDirectory: "/repo", live: live, isDenying: true),
+            size: CGSize(width: 820, height: 120))
+        defer { window.close() }
+        let editor = window.firstResponder as? NSTextView
+        XCTAssertTrue(editor?.isFieldEditor == true, "focus is on \(String(describing: window.firstResponder))")
+    }
+
+    /// Mockup 1's busy composer: "■ Stop" on its faint red fill, and a lit ↵ that queues the next message.
+    func testBusyComposer() {
+        let model = GrimoireModel(
+            settings: SettingsStore(documents: MemoryDocs()),
+            sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
+        let started = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            clock: { started }, makeEngine: { FakeEngine() })
+        live.send("Make the sidebar glass.")
+        XCTAssertTrue(live.canInterrupt)
+        Snapshot.assertMatches(
+            ThreadFooter(live: live, model: model, workingDirectory: "/repo", harness: .claude), named: "composer-busy",
+            size: CGSize(width: 820, height: 150))
+    }
+
+    /// Mockup 9 B: no threads yet — the cyan ❖ at 40 pt over both ways in.
+    func testNoThreadsEmptyState() {
+        let model = GrimoireModel(
+            settings: SettingsStore(documents: MemoryDocs()),
+            sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
+        model.cli = .found(path: "/usr/bin/true", version: "2.1.296")
+        XCTAssertTrue(model.projects.isEmpty)
+        Snapshot.assertMatches(MainPane(model: model), named: "empty-no-threads", size: CGSize(width: 820, height: 420))
+    }
+
     /// GP15 (mockup 2): an Edit card numbers its lines where they sit in the file, hunk header included.
     func testEditCardShowsFileLineNumbers() throws {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-edit-\(UUID())")

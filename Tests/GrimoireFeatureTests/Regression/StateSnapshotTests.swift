@@ -58,7 +58,9 @@ final class StateSnapshotTests: XCTestCase {
             .turnFinished(
                 TurnResult(outcome: .failed("You've hit your usage limit"), sessionID: "", costUSD: nil, text: nil)))
         XCTAssertEqual(model.alternative(to: .claude), .codex)
-        try assertThread(model, named: "state-limit")
+        model.claudePlan = "Max"
+        // At mockup 12 D's thread width the bar is one row: text, meter, then the buttons.
+        try assertThread(model, named: "state-limit", width: 996)
         try assertThread(model, named: "state-limit-narrow", width: 420)
         Snapshot.assertMatches(Sidebar(model: model), named: "state-limit-sidebar", size: CGSize(width: 300, height: 240))
     }

@@ -77,6 +77,8 @@ final class GrimoireModel {
     var usage: [Harness: [UsageWindow]] = [:]
     /// The clock the limit bar and startup steps read; tests freeze it.
     var now: () -> Date = Date.init
+    /// Claude's plan ("Max") for the limit bar's reset line (mockup 12 D); nil when unknown. Tests set it.
+    var claudePlan: String?
     /// The models each non-Claude agent offers, for the model menus.
     private(set) var models: [Harness: [ModelChoice]] = [:]
     var isShowingSettings = false
@@ -124,7 +126,10 @@ final class GrimoireModel {
         self.settings = settings
         self.sessionsRoot = sessionsRoot
         // A model on a fixture root is a test: it never runs the real `codex` or `opencode`.
-        if sessionsRoot == ClaudeSessions.defaultRoot { listers = Self.listers(openCode: openCode) }
+        if sessionsRoot == ClaudeSessions.defaultRoot {
+            listers = Self.listers(openCode: openCode)
+            claudePlan = ClaudeConfig.read(claudeHome: sessionsRoot.deletingLastPathComponent()).plan
+        }
         self.signals = signals
         self.apps = apps
     }
