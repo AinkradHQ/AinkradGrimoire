@@ -73,7 +73,9 @@ final class GrimoireModel {
     let settings: SettingsStore
     /// The CLI's rate-limit windows, as last reported by any thread.
     /// Each agent's rate-limit windows: read while listing, then as threads report them.
-    private(set) var usage: [Harness: [UsageWindow]] = [:]
+    var usage: [Harness: [UsageWindow]] = [:]
+    /// The clock the limit bar and startup steps read; tests freeze it.
+    var now: () -> Date = Date.init
     /// The models each non-Claude agent offers, for the model menus.
     private(set) var models: [Harness: [ModelChoice]] = [:]
     var isShowingSettings = false
@@ -352,9 +354,10 @@ final class GrimoireModel {
         -> LiveThread
     {
         let live = LiveThread(
-            entries: entries, startOptions: options, model: model,
+            entries: entries, startOptions: options, model: model, clock: { [weak self] in self?.now() ?? Date() },
             makeEngine: { [weak self] in self?.makeEngine(harness) ?? UnavailableEngine() })
         live.onUsage = { [weak self] windows in self?.usage[harness] = windows }
+        live.onUsageLimit = { [weak self] hint in self?.markLimited(harness, resetHint: hint) }
         live.onNeedsYou = { [weak self, weak live] request in
             guard let self, let live else { return }
             self.notifyNeedsYou(live, request: request)

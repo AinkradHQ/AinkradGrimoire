@@ -37,6 +37,8 @@ public final class AgyEngine: HarnessEngine {
         wire.mode = options.permissionMode ?? .ask
         wire.model = options.model
         try spawn()
+        // agy has no handshake: it is ready once spawned, so the thread stops showing its startup steps.
+        continuation.yield(.status("started"))
     }
 
     public func send(_ text: String, images: [EngineImage]) throws {

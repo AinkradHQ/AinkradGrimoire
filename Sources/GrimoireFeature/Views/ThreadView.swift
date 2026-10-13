@@ -17,7 +17,9 @@ struct ThreadView: View {
                     actions
                 }
                 if let live = model.current {
-                    ConversationView(live: live, workingDirectory: thread.workingDirectory)
+                    ConversationView(live: live, workingDirectory: thread.workingDirectory) {
+                        EngineStateRows(model: model, thread: thread, live: live)
+                    }
                     ThreadFooter(
                         live: live, model: model, workingDirectory: thread.workingDirectory, harness: thread.harness)
                 } else {
@@ -122,9 +124,11 @@ struct ThreadView: View {
     }
 }
 
-private struct ConversationView: View {
+private struct ConversationView<Trailer: View>: View {
     let live: LiveThread
     let workingDirectory: String
+    /// What the engine is doing (starting, failed), under the last message.
+    @ViewBuilder let trailer: Trailer
     @Environment(\.ainkradSkin) private var skin
 
     var body: some View {
@@ -137,6 +141,7 @@ private struct ConversationView: View {
                             waitingToolID: live.pendingApproval?.toolUseID
                         ).id(index)
                     }
+                    trailer.id("trailer")
                 }
                 .padding(.horizontal, skin.size.s20)
                 .padding(.top, skin.size.s8)
@@ -147,6 +152,7 @@ private struct ConversationView: View {
             .defaultScrollAnchor(.bottom)
             .onChange(of: live.entries.count) { scrollToNewest(proxy) }
             .onChange(of: live.entries.last) { scrollToNewest(proxy) }
+            .onChange(of: live.failure) { proxy.scrollTo("trailer", anchor: .bottom) }
         }
     }
 
