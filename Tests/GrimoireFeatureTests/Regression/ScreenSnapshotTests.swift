@@ -87,6 +87,15 @@ final class ScreenSnapshotTests: XCTestCase {
             }, named: "settings-narrow", size: CGSize(width: 720, height: 640))
     }
 
+    /// GD23: no agent CLI — install commands each on one line, the PATH as separate folders, left-aligned.
+    func testNoAgentFound() {
+        let model = GrimoireModel(
+            settings: SettingsStore(documents: MemoryDocs()),
+            sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
+        model.cli = .missing(searched: "/Users/me/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin")
+        Snapshot.assertMatches(MainPane(model: model), named: "no-agent", size: CGSize(width: 520, height: 560))
+    }
+
     // MARK: - Fixtures
 
     private func assertThread(_ model: GrimoireModel, named name: String, width: CGFloat = threadSize.width) throws {

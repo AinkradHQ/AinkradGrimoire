@@ -102,21 +102,7 @@ struct MainPane: View {
             case .checking:
                 AinkradLoadingState(label: "Looking for coding agents…")
             case .missing(let searched):
-                EmptyWithActions(
-                    icon: "terminal",
-                    title: "No coding agent found",
-                    message: """
-                        Grimoire drives the CLIs you already use. It looked on your login shell's PATH:
-                        \(searched)
-                        Install Claude Code with: npm install -g @anthropic-ai/claude-code
-                        or Codex with: npm install -g @openai/codex
-                        """
-                ) {
-                    AinkradButton(title: "Choose the CLI…", style: .secondary) { model.isShowingSettings = true }
-                        .fixedSize()
-                    AinkradButton(title: "Check again", style: .primary) { Task { await model.reload() } }
-                        .fixedSize()
-                }
+                NoAgentView(model: model, searched: searched)
             case .found:
                 if model.projects.isEmpty {
                     EmptyWithActions(
