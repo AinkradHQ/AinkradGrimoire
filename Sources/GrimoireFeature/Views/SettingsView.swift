@@ -81,7 +81,7 @@ struct SettingsView: View {
                             row("\(harness.displayName) · \(window.name) window") {
                                 HStack(spacing: skin.size.s10) {
                                     AinkradStatusBar(value: window.utilization)
-                                        .frame(width: skin.size.s240)
+                                        .frame(minWidth: skin.size.s80, maxWidth: skin.size.s240)
                                     Text(usageDetail(window))
                                         .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
                                         .foregroundStyle(skin.color(skin.text.faint))
@@ -145,14 +145,22 @@ struct SettingsView: View {
         .background(skin.shape(cut: AinkradRadius.md).fill(theme.surface.opacity(skin.opacity.o60)))
     }
 
+    /// Label and control side by side; the control under its label when the pane is too narrow for both (GD16).
     private func row(_ label: String, @ViewBuilder content: () -> some View) -> some View {
-        HStack(spacing: skin.size.s14) {
-            Text(label)
-                .font(skin.font(AinkradFontToken(sizeKey: "t13")))
-                .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
-                .frame(width: skin.size.s200, alignment: .leading)
-            content()
-            Spacer(minLength: 0)
+        let text = Text(label)
+            .font(skin.font(AinkradFontToken(sizeKey: "t13")))
+            .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: skin.size.s14) {
+                text.frame(width: skin.size.s200, alignment: .leading)
+                content()
+                Spacer(minLength: 0)
+            }
+            VStack(alignment: .leading, spacing: skin.size.s8) {
+                text
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -161,7 +169,7 @@ struct SettingsView: View {
         HStack(spacing: skin.size.s14) {
             AinkradBadge(text: badge, tint: tint)
                 .fixedSize()
-                .frame(width: skin.size.s200, alignment: .leading)
+                .frame(minWidth: skin.size.s96, maxWidth: skin.size.s200, alignment: .leading)
             Text(detail)
                 .font(AinkradFontResolver.font(size: 12, mono: true, typography: typography))
                 .foregroundStyle(skin.color(skin.text.muted))

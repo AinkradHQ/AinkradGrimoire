@@ -56,7 +56,8 @@ struct Sidebar: View {
         .padding(.top, skin.size.s12)
         .padding(.horizontal, skin.size.s10)
         .padding(.bottom, skin.size.s10)
-        .frame(width: skin.size.s300)
+        // Gives way before the thread does in a narrow window (GD16).
+        .frame(minWidth: skin.size.s260, idealWidth: skin.size.s300, maxWidth: skin.size.s300)
         .frame(maxHeight: .infinity, alignment: .top)
         // Fill, not a rule.
         .background(theme.surface.opacity(skin.opacity.o35))

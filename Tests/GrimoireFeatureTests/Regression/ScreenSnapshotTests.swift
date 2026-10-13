@@ -69,6 +69,18 @@ final class ScreenSnapshotTests: XCTestCase {
             DiffBlock(diff: diff).padding(12), named: "diff-long-lines", size: CGSize(width: 360, height: 220))
     }
 
+    /// GD16: at 720 pt the sidebar gives way and Settings stacks its controls under their labels; nothing clips.
+    func testSettingsInANarrowWindow() async throws {
+        let (model, root) = try await sidebarModel()
+        defer { try? FileManager.default.removeItem(at: root) }
+        model.isShowingSettings = true
+        Snapshot.assertMatches(
+            HStack(spacing: 0) {
+                Sidebar(model: model)
+                MainPane(model: model)
+            }, named: "settings-narrow", size: CGSize(width: 720, height: 640))
+    }
+
     // MARK: - Fixtures
 
     private func assertThread(_ model: GrimoireModel, named name: String, width: CGFloat = threadSize.width) throws {
