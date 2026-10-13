@@ -27,6 +27,18 @@ final class LiveThread {
     private(set) var costUSD: Double = 0
     /// When the running turn started — drives the status line's clock.
     private(set) var turnStartedAt: Date?
+    /// The composer's text. Kept here so a message the agent never answered can go back into it.
+    var draft = ""
+    /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
+    private(set) var startingSince: Date?
+    /// Messages in the stored history this thread opened with.
+    let loadedMessages: Int
+    /// Why the agent stopped, for the in-transcript failure card (E6 C).
+    private(set) var failure: EngineFailure?
+    /// The last turn failed on the agent's usage limit (E6 D); cleared by the next send.
+    private(set) var hitLimit = false
+    /// "Send at reset": the composer's message goes out at this time.
+    private(set) var sendAt: Date?
 
     /// Called once the CLI names the session — a new thread's id until then is
     /// a placeholder.
@@ -35,6 +47,8 @@ final class LiveThread {
     var onNeedsYou: ((ApprovalRequest) -> Void)?
     /// Called with the CLI's rate-limit windows whenever they're reported.
     var onUsage: (([UsageWindow]) -> Void)?
+    /// Called when a turn fails on the usage limit, with the reset the CLI named if it named one.
+    var onUsageLimit: ((Date?) -> Void)?
 
     private var engine: HarnessEngine?
     /// Set by `stop()`, so the exit it causes isn't reported as a crash.
@@ -46,12 +60,21 @@ final class LiveThread {
     private var toolIndex: [String: Int] = [:]
     /// Plans by their tool id, so an updated plan replaces its card.
     private var planIndex: [String: Int] = [:]
+    private let clock: () -> Date
+    /// When the running engine was spawned, and what it printed to stderr since.
+    private var launchedAt: Date?
+    private var errorOutput = ""
+    private var sendTask: Task<Void, Never>?
 
     init(
         entries: [ThreadEntry], startOptions: EngineStartOptions, model: String? = nil,
-        makeEngine: @escaping () -> HarnessEngine
+        clock: @escaping () -> Date = Date.init, makeEngine: @escaping () -> HarnessEngine
     ) {
         self.entries = entries
+        self.clock = clock
+        self.loadedMessages =
+            startOptions.resume == nil
+            ? 0 : entries.filter { if case .tool = $0 { false } else if case .plan = $0 { false } else { true } }.count
         self.startOptions = startOptions
         self.sessionID = startOptions.resume
         self.model = model
@@ -76,11 +99,17 @@ final class LiveThread {
         let engine = makeEngine()
         self.engine = engine
         stopping = false
+        failure = nil
+        errorOutput = ""
+        launchedAt = clock()
+        startingSince = launchedAt
         do {
             try engine.start(startOptions)
         } catch {
             self.engine = nil
+            startingSince = nil
             status = .failed("Couldn't start the agent: \(error.localizedDescription)")
+            fail(EngineFailure(code: nil, after: 0, output: error.localizedDescription, beforeStart: true))
             return
         }
         Task { [weak self] in
@@ -92,6 +121,8 @@ final class LiveThread {
 
     /// Sends a message. While a turn runs the CLI queues it and answers after.
     func send(_ text: String, images: [EngineImage] = []) {
+        hitLimit = false
+        cancelSendAtReset()
         ensureStarted()
         guard let engine else { return }
         do {
@@ -130,11 +161,81 @@ final class LiveThread {
         engine?.stop()
     }
 
+    /// The failure card's Retry: start the agent again and send what is in the composer.
+    func retry() {
+        failure = nil
+        status = .idle
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return ensureStarted() }
+        draft = ""
+        send(text)
+    }
+
+    /// Sends the composer's message at `date` — the usage limit's reset.
+    func sendAtReset(_ date: Date) {
+        sendAt = date
+        sendTask?.cancel()
+        let delay = max(date.timeIntervalSince(clock()), 0)
+        sendTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self?.sendQueued()
+        }
+    }
+
+    func cancelSendAtReset() {
+        sendTask?.cancel()
+        sendTask = nil
+        sendAt = nil
+    }
+
+    /// Internal so tests can fire the queue without waiting for the reset.
+    func sendQueued() {
+        guard sendAt != nil else { return }
+        sendAt = nil
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        draft = ""
+        send(text)
+    }
+
+    /// Shows a failure: a usage limit docks the limit bar, anything else gets the card. Either way the
+    /// message the agent never answered goes back into the composer.
+    private func fail(_ failure: EngineFailure) {
+        var failure = failure
+        if failure.kind == .usageLimit {
+            hitLimit = true
+            _ = restoreUnanswered(removing: false)
+            entries.append(.text("*\(Self.limitNote)*"))
+            onUsageLimit?(UsageLimit.resetHint(in: failure.output))
+            return
+        }
+        failure.restoredDraft = restoreUnanswered(removing: true)
+        self.failure = failure
+    }
+
+    static let limitNote = "The agent did not answer — its usage limit was reached."
+
+    /// Puts the last message back in the composer when nothing answered it. `removing` takes it out of the
+    /// transcript too (it never got anywhere). True when the composer now holds a message.
+    private func restoreUnanswered(removing: Bool) -> Bool {
+        if case .user(let text) = entries.last, draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            draft = text
+            if removing { entries.removeLast() }
+        }
+        return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     // MARK: - Events
 
     /// Folds one engine event into the thread. Internal so tests can replay a
     /// recorded session without a process.
     func apply(_ event: EngineEvent) {
+        // Anything the agent says besides an error means it is up.
+        switch event {
+        case .error, .exited: break
+        default: startingSince = nil
+        }
         switch event {
         case .sessionStarted(let info):
             if info.sessionID != sessionID, !info.sessionID.isEmpty { onSessionID?(info.sessionID) }
@@ -170,11 +271,20 @@ final class LiveThread {
             costUSD += result.costUSD ?? 0
             switch result.outcome {
             case .success, .interrupted: status = pendingApproval == nil ? .idle : .needsYou
-            case .failed(let message): status = .failed(message)
+            case .failed(let message):
+                status = .failed(message)
+                // A recognised failure gets the card's fix-it or the limit bar; others keep the status line.
+                if EngineFailure.classify(message) != .other {
+                    fail(EngineFailure(code: nil, after: elapsed, output: message, beforeStart: false))
+                }
             }
         case .error(let message):
             status = .failed(message)
+            errorOutput += (errorOutput.isEmpty ? "" : "\n") + message
         case .exited(let code):
+            let wasStarting = startingSince != nil
+            let wasBusy = turnStartedAt != nil || status == .needsYou
+            startingSince = nil
             engine = nil
             pendingApproval = nil
             turnStartedAt = nil
@@ -185,12 +295,19 @@ final class LiveThread {
                 call.result = ToolOutput(content: "Interrupted — the agent exited", isError: true)
                 entries[index] = .tool(call)
             }
-            guard status == .working || status == .needsYou else { return }
             // A CLI that dies mid-turn often leaves no stderr (crash, kill, OOM);
             // say so rather than going quietly idle.
-            status = stopping ? .idle : .failed("The agent exited mid-turn (code \(code))")
+            if status == .working || status == .needsYou {
+                status = stopping ? .idle : .failed("The agent exited mid-turn (code \(code))")
+            }
+            guard code != 0, !stopping, wasStarting || wasBusy else { return }
+            if case .failed = status {} else { status = .failed("The agent exited (code \(code))") }
+            let output = errorOutput.isEmpty ? failure?.output ?? "" : errorOutput
+            fail(EngineFailure(code: code, after: elapsed, output: output, beforeStart: wasStarting))
         }
     }
+
+    private var elapsed: TimeInterval { launchedAt.map { clock().timeIntervalSince($0) } ?? 0 }
 
     /// A PreToolUse hook may rewrite a command (`cat` → `rtk read`) before the approval is asked; the card
     /// then shows what will run, like the approval does, and keeps what the agent wrote (GD3).
