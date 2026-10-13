@@ -8,17 +8,29 @@ struct ThreadFooter: View {
     let model: GrimoireModel
     let workingDirectory: String
     var harness: Harness = .claude
-    @State private var draft = ""
     @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradReduceMotion) private var reduceMotion
+
+    private var draft: String { live.draft }
 
     var body: some View {
+        let limit = model.limit(for: harness)
         VStack(alignment: .leading, spacing: 0) {
             if let request = live.pendingApproval {
                 ApprovalBar(request: request, workingDirectory: workingDirectory, live: live)
+            } else if limit != nil {
+                // Re-read each minute, so the bar goes once the window resets.
+                TimelineView(.everyMinute) { _ in
+                    if let limit = model.limit(for: harness) {
+                        limitBar(limit)
+                    }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
-            StatusLine(live: live)
+            StatusLine(live: live, isLimited: limit != nil)
             AinkradComposer(
-                text: $draft, placeholder: "Message \(harness.displayName)… (/ for commands, @ for files)", isEditable: true,
+                text: Bindable(live).draft,
+                placeholder: "Message \(harness.displayName)… (/ for commands, @ for files)", isEditable: true,
                 canSend: !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, autoFocus: true,
                 suggestions: suggestions, onPick: { _, _ in }, onDrop: nil, onSend: send
             ) {
@@ -36,6 +48,9 @@ struct ThreadFooter: View {
                     }
                 }
             } trailing: {
+                if let at = live.sendAt {
+                    queued(at)
+                }
                 if live.canInterrupt {
                     AinkradButton(title: "Stop", style: .danger, icon: "stop.fill") { live.interrupt() }
                         .fixedSize()
@@ -49,14 +64,43 @@ struct ThreadFooter: View {
         }
         // Start the agent as soon as there is something to say, so `/` lists
         // the CLI's own commands by the time you look.
-        .onChange(of: draft) { _, text in if !text.isEmpty { live.ensureStarted() } }
+        .onChange(of: live.draft) { _, text in if !text.isEmpty { live.ensureStarted() } }
+        .animation(reduceMotion ? nil : skin.animation(skin.motion.present), value: limit)
     }
 
     private func send() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        draft = ""
+        live.draft = ""
         live.send(text)
+    }
+
+    private func limitBar(_ limit: UsageLimit) -> some View {
+        let alternative = model.alternative(to: harness)
+        let canQueue =
+            limit.resetsAt != nil && live.sendAt == nil && !draft.trimmingCharacters(in: .whitespaces).isEmpty
+        return LimitBar(
+            limit: limit, now: model.now,
+            sendAtReset: canQueue ? { limit.resetsAt.map(live.sendAtReset) } : nil,
+            alternative: alternative,
+            carryOver: {
+                guard let alternative, let thread = model.selectedThread else { return }
+                model.carryOver(thread, to: alternative)
+            })
+    }
+
+    /// "queued · sends at 15:00", with a way to take it back.
+    private func queued(_ date: Date) -> some View {
+        HStack(spacing: skin.size.s4) {
+            Text("queued · sends at \(UsageLimit.clock(date))")
+                .font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
+                .foregroundStyle(skin.color(skin.text.faint))
+                .lineLimit(1)
+            AinkradIconButton(systemName: "xmark", size: skin.size.s22, tooltip: "Don't send at reset") {
+                live.cancelSendAtReset()
+            }
+        }
+        .fixedSize()
     }
 
     private func suggestions(_ trigger: AinkradComposerTrigger) -> [AinkradComposerSuggestion] {
@@ -192,11 +236,33 @@ private struct ApprovalBar: View {
 /// What the agent is doing right now, and for how long.
 private struct StatusLine: View {
     let live: LiveThread
+    /// The limit bar says it; the line stays quiet.
+    let isLimited: Bool
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradStatusColors) private var statusColors
 
     var body: some View {
+        if live.failure != nil || (isLimited && live.status != .working) {
+            // The failure card or the limit bar says it.
+        } else if live.startingSince != nil {
+            HStack(spacing: skin.size.s8) {
+                AinkradSpinner(size: skin.size.s10)
+                Text("Starting engine…")
+                Text("you can type; it sends when ready").foregroundStyle(skin.color(skin.text.faint))
+            }
+            .lineLimit(1)
+            .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+            .foregroundStyle(skin.color(skin.text.muted))
+            .padding(.horizontal, skin.size.s20)
+            .padding(.vertical, skin.size.s6)
+        } else {
+            statusBody
+        }
+    }
+
+    @ViewBuilder
+    private var statusBody: some View {
         switch live.status {
         case .working:
             TimelineView(.periodic(from: .now, by: 1)) { context in

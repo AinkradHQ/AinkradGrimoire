@@ -73,6 +73,7 @@ struct Sidebar: View {
             ForEach(project.sessions) { thread in
                 ThreadRow(
                     thread: thread, status: model.liveThreads[thread.id]?.status,
+                    limit: model.liveThreads[thread.id]?.hitLimit == true ? model.limit(for: thread.harness) : nil,
                     isSelected: thread.id == model.selectedThreadID
                 ) {
                     model.selectedThreadID = thread.id
@@ -166,6 +167,8 @@ private struct ProjectRow: View {
 /// an empty slot keeps titles aligned.
 private struct StatusDot: View {
     let status: LiveThread.Status?
+    /// Its agent's usage limit stopped it: amber until the reset.
+    var isLimited = false
     @State private var dim = false
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
@@ -182,7 +185,8 @@ private struct StatusDot: View {
     }
 
     private var color: Color {
-        switch status {
+        if isLimited { return statusColors.warning }
+        return switch status {
         case .working: theme.accentSecondary
         case .needsYou: statusColors.warning
         case .failed: statusColors.danger
@@ -203,6 +207,8 @@ private struct ThreadRow: View {
     let thread: ClaudeSessionSummary
     /// Set while the thread is open this run; drives the status dot.
     let status: LiveThread.Status?
+    /// Set when this thread's last turn hit its agent's usage limit, until the reset (E6 D).
+    let limit: UsageLimit?
     let isSelected: Bool
     let select: () -> Void
     @State private var isHovered = false
@@ -221,7 +227,7 @@ private struct ThreadRow: View {
     private var label: some View {
         VStack(alignment: .leading, spacing: skin.size.s3) {
             HStack(spacing: skin.size.s8) {
-                StatusDot(status: status)
+                StatusDot(status: status, isLimited: limit != nil)
                 Text(thread.title)
                     .font(skin.font(AinkradFontToken(sizeKey: "t13")))
                     .foregroundStyle(theme.foreground.opacity(isSelected ? skin.opacity.o95 : skin.opacity.o85))
@@ -238,7 +244,10 @@ private struct ThreadRow: View {
                 if let worktree = thread.worktree {
                     AinkradBadge(text: "⑂ \(worktree)", tint: isSelected ? theme.foreground : theme.accentSecondary)
                 }
-                if status == .needsYou {
+                if let limit {
+                    Text(limit.resetsAt.map { "limit · \(UsageLimit.clock($0))" } ?? "limit")
+                        .foregroundStyle(statusColors.warning)
+                } else if status == .needsYou {
                     Text("needs you").foregroundStyle(statusColors.warning)
                 } else if case .failed = status {
                     Text("failed").foregroundStyle(statusColors.danger)
