@@ -39,6 +39,11 @@ struct Sidebar: View {
                     ForEach(model.visibleProjects) { project in
                         projectSection(project)
                     }
+                    if let title = Self.noMatchTitle(query: model.searchText, visible: model.visibleProjects) {
+                        AinkradEmptyState(
+                            icon: "magnifyingglass", title: title, message: "Search looks at thread titles and project names.")
+                        .padding(.top, skin.size.s20)
+                    }
                     if model.hiddenProjectCount > 0 {
                         ShowAllRow(count: model.projects.count) { model.showsAllProjects = true }
                     }
@@ -102,6 +107,12 @@ struct Sidebar: View {
         .foregroundStyle(skin.color(skin.text.muted))
         .lineLimit(1)
         .padding(.horizontal, skin.size.s6)
+    }
+
+    /// "No threads match “x”" when a search hides every project (GD20); nil otherwise.
+    static func noMatchTitle(query: String, visible: [ClaudeProject]) -> String? {
+        let query = query.trimmingCharacters(in: .whitespaces)
+        return query.isEmpty || !visible.isEmpty ? nil : "No threads match “\(query)”"
     }
 
     private func chooseFolder() {

@@ -31,6 +31,14 @@ struct SidebarModelTests {
             })
     }
 
+    @Test("a search that hides everything says so (GD20)")
+    func noMatches() {
+        let projects = [project("/w/Ainkrad", ["Glass sidebar"])]
+        #expect(Sidebar.noMatchTitle(query: " zzz ", visible: []) == "No threads match “zzz”")
+        #expect(Sidebar.noMatchTitle(query: "glass", visible: projects) == nil)
+        #expect(Sidebar.noMatchTitle(query: "", visible: []) == nil, "no search: the sidebar's own empty state")
+    }
+
     @Test("search keeps matching threads, or a whole project when its name matches")
     func search() {
         let projects = [project("/w/Ainkrad", ["Glass sidebar", "Release"]), project("/w/GitScope", ["Glass tabs"])]
