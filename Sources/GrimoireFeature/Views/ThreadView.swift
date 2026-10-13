@@ -34,8 +34,16 @@ struct ThreadView: View {
         }
     }
 
-    @ViewBuilder
+    /// In a squeezed thread (GD10) the buttons fold into the More menu rather than push the header off the edge.
     private var actions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: skin.size.s6) { buttons }
+            more(moreItems(folding: true))
+        }
+    }
+
+    @ViewBuilder
+    private var buttons: some View {
         AinkradIconButton(systemName: "terminal", size: skin.size.s30, tooltip: "Open a terminal here (Rune)") {
             model.openTerminal(for: thread)
         }
@@ -48,7 +56,11 @@ struct ThreadView: View {
                 model.forkThread(thread)
             }
         }
-        AinkradMenuButton(items: moreItems) {
+        more(moreItems(folding: false))
+    }
+
+    private func more(_ items: [AinkradMenuItem]) -> some View {
+        AinkradMenuButton(items: items) {
             Image(systemName: "ellipsis")
                 .frame(width: skin.size.s30, height: skin.size.s30)
                 .contentShape(Rectangle())
@@ -58,9 +70,20 @@ struct ThreadView: View {
     }
 
     /// Resume and reveal only where they lead somewhere: a draft has no session yet, and only Claude and
-    /// Codex keep a session file (GD21).
-    private var moreItems: [AinkradMenuItem] {
+    /// Codex keep a session file (GD21). `folding` leads with the header's buttons.
+    private func moreItems(folding: Bool) -> [AinkradMenuItem] {
         var items: [AinkradMenuItem] = []
+        if folding {
+            items.append(
+                AinkradMenuItem(title: "Open a terminal here", systemName: "terminal") { model.openTerminal(for: thread) })
+            items.append(AinkradMenuItem(title: "Review changes", systemName: "plusminus") { model.isReviewOpen.toggle() })
+            if thread.harness != .agy {
+                items.append(
+                    AinkradMenuItem(title: "Fork this thread", systemName: "arrow.triangle.branch") {
+                        model.forkThread(thread)
+                    })
+            }
+        }
         if let command = Self.resumeCommand(for: thread) {
             items.append(
                 AinkradMenuItem(title: "Copy resume command", systemName: "doc.on.doc") {
@@ -157,7 +180,7 @@ private struct EntryRow: View {
     }
 }
 
-/// The person's message: a tinted card on the right.
+/// The person's message: a tinted card on the right, markdown rendered as replies are (GD1).
 private struct UserBubble: View {
     let text: String
     @Environment(\.ainkradSkin) private var skin
@@ -166,9 +189,7 @@ private struct UserBubble: View {
     var body: some View {
         HStack {
             Spacer(minLength: skin.size.s120)
-            Text(text)
-                .font(skin.font(AinkradFontToken(sizeKey: "t13")))
-                .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
+            message
                 .textSelection(.enabled)
                 .padding(.horizontal, skin.size.s14)
                 .padding(.vertical, skin.size.s10)
@@ -176,6 +197,23 @@ private struct UserBubble: View {
                 .overlay(
                     skin.shape(cut: AinkradRadius.md).stroke(
                         theme.accentPrimary.opacity(skin.opacity.o55), lineWidth: 1))
+        }
+    }
+
+    /// Prose stays one hugging `Text` (inline markdown only); a code block, list or table takes the kit's renderer.
+    @ViewBuilder
+    private var message: some View {
+        let blocks = AinkradMarkdownBlocks.parse(text)
+        if blocks.allSatisfy({ if case .paragraph = $0 { true } else { false } }) {
+            Text(
+                (try? AttributedString(
+                    markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                    ?? AttributedString(text)
+            )
+            .font(skin.font(AinkradFontToken(sizeKey: "t13")))
+            .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
+        } else {
+            AinkradMarkdownText(blocks: blocks)
         }
     }
 }
@@ -323,46 +361,6 @@ private struct ToolCard: View {
         if isWaiting { return statusColors.warning.opacity(skin.opacity.o60) }
         return skin.material.kind == "glass"
             ? theme.foreground.opacity(skin.opacity.o12) : theme.accentSecondary.opacity(skin.opacity.o25)
-    }
-}
-
-/// A command's output or a file's content: monospaced, the first lines until "N more lines" opens the rest.
-private struct OutputBlock: View {
-    let text: String
-    let maxLines: Int
-    @State private var showsAll = false
-    @Environment(\.ainkradTheme) private var theme
-    @Environment(\.ainkradSkin) private var skin
-    @Environment(\.ainkradTypography) private var typography
-
-    var body: some View {
-        let lines = ToolSummary.lines(text)
-        // ponytail: one Text for the whole output; virtualize if multi-thousand-line outputs get slow.
-        let shown = lines.prefix(showsAll ? lines.count : maxLines).joined(separator: "\n")
-        VStack(alignment: .leading, spacing: skin.size.s4) {
-            Text(shown)
-                .font(AinkradFontResolver.font(size: 11.5, mono: true, typography: typography))
-                .foregroundStyle(skin.color(skin.text.muted))
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if lines.count > maxLines {
-                // A plain button, so Full Keyboard Access can focus it and Space opens the rest (GD19).
-                Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
-                    showsAll.toggle()
-                } label: {
-                    HStack(spacing: skin.size.s4) {
-                        Image(systemName: showsAll ? "chevron.up" : "chevron.down")
-                        Text(showsAll ? "Show less" : "\(lines.count - maxLines) more lines")
-                    }
-                    .font(skin.font(AinkradFontToken(sizeKey: "t10")))
-                    .foregroundStyle(skin.color(skin.text.faint))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(skin.size.s8)
-        .background(skin.shape(cut: AinkradRadius.sm).fill(theme.background.opacity(skin.opacity.o70)))
     }
 }
 

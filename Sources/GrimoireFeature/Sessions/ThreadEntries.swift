@@ -124,7 +124,8 @@ enum ToolSummary {
             let lines = ReviewChanges.patchChanges(input).compactMap(\.diff).flatMap(\.hunks).flatMap(\.lines)
             return "+\(lines.filter { $0.kind == .insertion }.count) −\(lines.filter { $0.kind == .deletion }.count)"
         case "Write":
-            return "\(lineCount(input["content"]?.stringValue ?? "")) lines"
+            let lines = lineCount(input["content"]?.stringValue ?? "")
+            return lines == 1 ? "1 line" : "\(lines) lines"
         case "Grep":
             let matches = output.content.split(separator: "\n").count
             return matches == 1 ? "1 match" : "\(matches) matches"
@@ -152,6 +153,14 @@ enum ToolSummary {
     }
 
     static func lineCount(_ text: String) -> Int { lines(text).count }
+
+    /// A `cat -n` or Read line ("     12\tcode", "    12→code") as its number and its text; `nil` for any other (GD5).
+    static func gutter(_ line: Substring) -> (number: Substring, text: Substring)? {
+        guard let separator = line.firstIndex(where: { $0 == "\t" || $0 == "→" }) else { return nil }
+        let number = line[..<separator]
+        guard number.contains(where: \.isNumber), number.allSatisfy({ $0 == " " || $0.isNumber }) else { return nil }
+        return (number, line[line.index(after: separator)...])
+    }
 
     /// `text` split into lines; the newline that ends the last line (nearly all
     /// output has one) does not start another, empty one (GD18).

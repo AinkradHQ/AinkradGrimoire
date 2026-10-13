@@ -102,21 +102,7 @@ struct MainPane: View {
             case .checking:
                 AinkradLoadingState(label: "Looking for coding agents…")
             case .missing(let searched):
-                EmptyWithActions(
-                    icon: "terminal",
-                    title: "No coding agent found",
-                    message: """
-                        Grimoire drives the CLIs you already use. It looked on your login shell's PATH:
-                        \(searched)
-                        Install Claude Code with: npm install -g @anthropic-ai/claude-code
-                        or Codex with: npm install -g @openai/codex
-                        """
-                ) {
-                    AinkradButton(title: "Choose the CLI…", style: .secondary) { model.isShowingSettings = true }
-                        .fixedSize()
-                    AinkradButton(title: "Check again", style: .primary) { Task { await model.reload() } }
-                        .fixedSize()
-                }
+                NoAgentView(model: model, searched: searched)
             case .found:
                 if model.projects.isEmpty {
                     EmptyWithActions(
@@ -202,20 +188,31 @@ struct ThreadHeader<Actions: View>: View {
                 .font(skin.font(AinkradFontToken(sizeKey: "t15", weight: "semibold")))
                 .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
                 .lineLimit(1)
-            HStack(spacing: skin.size.s6) {
-                Text((thread.projectPath as NSString).lastPathComponent)
-                if let branch = thread.gitBranch {
-                    Text("·")
-                    Text(branch).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
-                }
-                HarnessBadge(harness: thread.harness).fixedSize()
-                if let model = (model ?? thread.model).map(ModelName.display) {
-                    Text(model).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
-                }
+            // Narrow, the model goes first, then the branch, then the project — never "… · f…" (GD10).
+            ViewThatFits(in: .horizontal) {
+                meta(project: true, branch: true, model: true)
+                meta(project: true, branch: false, model: false)
+                meta(project: false, branch: false, model: false)
             }
             .font(skin.font(AinkradFontToken(sizeKey: "t11")))
             .foregroundStyle(skin.color(skin.text.muted))
             .lineLimit(1)
+        }
+    }
+
+    private func meta(project: Bool, branch: Bool, model showsModel: Bool) -> some View {
+        HStack(spacing: skin.size.s6) {
+            if project {
+                Text((thread.projectPath as NSString).lastPathComponent)
+            }
+            if branch, let branch = thread.gitBranch {
+                Text("·")
+                Text(branch).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
+            }
+            HarnessBadge(harness: thread.harness).fixedSize()
+            if showsModel, let model = (model ?? thread.model).map(ModelName.display) {
+                Text(model).font(skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true)))
+            }
         }
     }
 }

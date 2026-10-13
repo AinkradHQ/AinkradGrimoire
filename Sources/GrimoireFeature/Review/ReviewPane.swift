@@ -49,7 +49,7 @@ struct ReviewPane: View {
             footer
         }
         .padding(skin.size.s14)
-        .frame(width: skin.size.s440)
+        .frame(minWidth: skin.size.s320, idealWidth: skin.size.s440, maxWidth: skin.size.s440)
         .frame(maxHeight: .infinity, alignment: .top)
         // Fill, not a rule.
         .background(theme.surface.opacity(skin.opacity.o35))
