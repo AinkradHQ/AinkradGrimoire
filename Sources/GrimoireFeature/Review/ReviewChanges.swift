@@ -162,8 +162,9 @@ enum ReviewChanges {
             binary = false
         }
 
-        for raw in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(raw)
+        // Split on "\n" alone, keeping a CRLF line's "\r" in its text as HunkRevert does: "\r\n" is one Character,
+        // so a Character split would merge a CRLF file's lines and swallow the next file's header (GD33).
+        for line in text.components(separatedBy: "\n") {
             if line.hasPrefix("diff --git ") {
                 closeFile()
                 // `diff --git a/x b/x` — the b side, unless +++ names it later.

@@ -76,7 +76,9 @@ struct DiffBlock: View {
                     .accessibilityHidden(true)
             }
             Text("\(sign) ")
-            Text(line.text).fixedSize(horizontal: false, vertical: true)
+            // A CRLF file's line keeps its "\r" for Revert (GD33); it isn't drawn.
+            Text(line.text.hasSuffix("\r") ? String(line.text.dropLast()) : line.text)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .foregroundStyle(color)
         .frame(maxWidth: .infinity, alignment: .leading)
