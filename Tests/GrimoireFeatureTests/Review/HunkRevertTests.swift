@@ -75,7 +75,7 @@ struct HunkRevertTests {
         #expect(try String(contentsOf: crlf, encoding: .utf8) == original)
     }
 
-    @Test("GD36: Revert selected waits while the agent's turn runs; it works again once the turn ends")
+    @Test("GD36: Revert selected and Revert this file wait while the agent's turn runs; it works again once the turn ends")
     func notMidTurn() async throws {
         let (repo, _) = try await repository()
         defer { try? FileManager.default.removeItem(at: repo) }
@@ -90,11 +90,14 @@ struct HunkRevertTests {
         let hunk = try #require(review.files.first?.diff?.hunks.first)
         review.selectedHunks = [HunkKey(path: "a.txt", hunk: hunk.id)]
         live.send("keep editing a.txt")
-        #expect(!review.canRevertHunks)
+        #expect(!review.canRevertNow)
         await review.revertSelected()
         #expect(try String(contentsOf: file, encoding: .utf8) == edited, "nothing written mid-turn")
+        // Nor does Revert this file.
+        await review.revert(try #require(review.files.first))
+        #expect(try String(contentsOf: file, encoding: .utf8) == edited, "the file is not restored mid-turn")
         live.apply(.turnFinished(TurnResult(outcome: .success, sessionID: "s", costUSD: nil, text: nil)))
-        #expect(review.canRevertHunks)
+        #expect(review.canRevertNow)
         await review.revertSelected()
         #expect(try String(contentsOf: file, encoding: .utf8) == Self.original)
     }
