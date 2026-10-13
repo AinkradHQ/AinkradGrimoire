@@ -81,6 +81,9 @@ struct ThreadEntriesTests {
                 == "3 lines")
         #expect(ToolSummary.lines("\n") == [""])
         #expect(
+            ToolSummary.result(name: "Write", input: ["content": "hello\n"], output: ToolOutput(content: "", isError: false))
+                == "1 line")
+        #expect(
             ToolSummary.result(name: "Bash", input: .null, output: ToolOutput(content: "exit 1\nmore", isError: true))
                 == "exit 1")
         #expect(

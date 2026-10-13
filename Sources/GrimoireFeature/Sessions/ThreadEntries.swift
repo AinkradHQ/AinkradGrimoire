@@ -124,7 +124,8 @@ enum ToolSummary {
             let lines = ReviewChanges.patchChanges(input).compactMap(\.diff).flatMap(\.hunks).flatMap(\.lines)
             return "+\(lines.filter { $0.kind == .insertion }.count) −\(lines.filter { $0.kind == .deletion }.count)"
         case "Write":
-            return "\(lineCount(input["content"]?.stringValue ?? "")) lines"
+            let lines = lineCount(input["content"]?.stringValue ?? "")
+            return lines == 1 ? "1 line" : "\(lines) lines"
         case "Grep":
             let matches = output.content.split(separator: "\n").count
             return matches == 1 ? "1 match" : "\(matches) matches"
