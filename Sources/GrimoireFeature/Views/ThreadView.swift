@@ -48,28 +48,50 @@ struct ThreadView: View {
                 model.forkThread(thread)
             }
         }
-        AinkradMenuButton(
-            items: [
-                AinkradMenuItem(title: "Copy resume command", systemName: "doc.on.doc") {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(
-                        "cd \(Self.shellQuoted(thread.workingDirectory)) && claude --resume \(thread.id)",
-                        forType: .string)
-                },
-                AinkradMenuItem(title: "Reveal session file", systemName: "doc.text.magnifyingglass") {
-                    NSWorkspace.shared.activateFileViewerSelecting([thread.fileURL])
-                },
-                AinkradMenuItem(title: "Open project in Finder", systemName: "folder") {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: thread.workingDirectory))
-                },
-            ]
-        ) {
+        AinkradMenuButton(items: moreItems) {
             Image(systemName: "ellipsis")
                 .frame(width: skin.size.s30, height: skin.size.s30)
                 .contentShape(Rectangle())
         }
         .fixedSize()
         .help("More")
+    }
+
+    /// Resume and reveal only where they lead somewhere: a draft has no session yet, and only Claude and
+    /// Codex keep a session file (GD21).
+    private var moreItems: [AinkradMenuItem] {
+        var items: [AinkradMenuItem] = []
+        if let command = Self.resumeCommand(for: thread) {
+            items.append(
+                AinkradMenuItem(title: "Copy resume command", systemName: "doc.on.doc") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(command, forType: .string)
+                })
+        }
+        if thread.fileURL.path != "/dev/null" {
+            items.append(
+                AinkradMenuItem(title: "Reveal session file", systemName: "doc.text.magnifyingglass") {
+                    NSWorkspace.shared.activateFileViewerSelecting([thread.fileURL])
+                })
+        }
+        items.append(
+            AinkradMenuItem(title: "Open project in Finder", systemName: "folder") {
+                NSWorkspace.shared.open(URL(fileURLWithPath: thread.workingDirectory))
+            })
+        return items
+    }
+
+    /// The shell command that continues `thread` in its own CLI; `nil` for a draft the CLI hasn't named.
+    static func resumeCommand(for thread: ClaudeSessionSummary) -> String? {
+        guard !thread.id.hasPrefix("new-") else { return nil }
+        let resume =
+            switch thread.harness {
+            case .claude: "claude --resume"
+            case .codex: "codex resume"
+            case .opencode: "opencode --session"
+            case .agy: "agy --conversation"
+            }
+        return "cd \(shellQuoted(thread.workingDirectory)) && \(resume) \(thread.id)"
     }
 
     static func shellQuoted(_ path: String) -> String {

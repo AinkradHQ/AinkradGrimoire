@@ -109,7 +109,10 @@ struct ThreadFooter: View {
     private var claudeModelMenu: some View {
         AinkradMenuButton(
             items: ["opus", "sonnet", "haiku"].map { alias in
-                AinkradMenuItem(title: alias.capitalized) { live.setModel(alias) }
+                // The CLI reports a full id (`claude-opus-5-5`); a pick here is the alias itself.
+                AinkradMenuItem(
+                    title: alias.capitalized, systemName: live.model?.contains(alias) == true ? "checkmark" : nil
+                ) { live.setModel(alias) }
             }
         ) {
             PullDownLabel {
