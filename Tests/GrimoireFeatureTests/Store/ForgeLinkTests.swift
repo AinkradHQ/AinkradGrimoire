@@ -31,6 +31,19 @@ struct ForgeLinkTests {
         #expect(FileLocation.line(of: ["not there"], in: file) == nil)
     }
 
+    @Test func anEditIsNumberedWhereItSitsInTheFile() {
+        let input: JSONValue = [
+            "file_path": "/r/a.swift", "old_string": "b\nold\nc", "new_string": "b\nnew1\nnew2\nc",
+        ]
+        let diff = ToolSummary.editDiff(input)
+        let applied = "a\na\na\nb\nnew1\nnew2\nc\nd\n"
+        let located = DiffBlock.located(diff, in: applied)?.hunks.first
+        #expect(located?.newStart == 4 && located?.oldStart == 4)
+        // Waiting for approval: the old side is still in the file.
+        #expect(DiffBlock.located(diff, in: "x\nb\nold\nc\n")?.hunks.first?.oldStart == 2)
+        #expect(DiffBlock.located(diff, in: "nothing like it\n") == nil, "falls back to the snippet")
+    }
+
     @Test func aTurnNoticeNamesTheFilesItsEditsWrote() throws {
         let edit = JSONValue.object([
             "file_path": .string("/r/Sources/a.swift"), "old_string": .string("a"), "new_string": .string("b"),

@@ -22,4 +22,27 @@ final class MockupFeatureSnapshotTests: XCTestCase {
                 ApprovalBar(request: request, workingDirectory: "/repo", live: live, isDenying: true)
             }, named: "approval-deny", size: CGSize(width: 820, height: 170))
     }
+
+    /// GP15 (mockup 2): an Edit card numbers its lines where they sit in the file, hunk header included.
+    func testEditCardShowsFileLineNumbers() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-edit-\(UUID())")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("SidebarRow.swift")
+        let before = (1...57).map { "// line \($0)" }
+        let edited = [
+            "        .padding(.horizontal, skin.size.s8)", "        .background {",
+            "            if isSelected { Capsule().glassEffect(.regular) }", "        }",
+            "        .contentShape(Rectangle())",
+        ]
+        try (before + edited + ["}"]).joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
+        let input: JSONValue = [
+            "file_path": .string(file.path),
+            "old_string": "        .padding(.horizontal, skin.size.s8)\n        .overlay(alignment: .bottom) { Rectangle().frame(height: 1) }\n        .contentShape(Rectangle())",
+            "new_string": .string(edited.joined(separator: "\n")),
+        ]
+        Snapshot.assertMatches(
+            EditDiffBlock(diff: ToolSummary.editDiff(input), path: file.path).padding(12), named: "edit-line-numbers",
+            size: CGSize(width: 640, height: 200))
+    }
 }
