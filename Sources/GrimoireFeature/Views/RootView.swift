@@ -17,15 +17,13 @@ struct RootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.tokens.background)
         .foregroundStyle(theme.tokens.foreground)
-        // Off while the New Thread sheet is up, so ⌘F/⌘L and thread keys don't act behind it.
-        .overlay { if !model.isComposingNewThread { ShortcutLayer(model: model) } }
+        // Off while the New Thread sheet or a Forge ask is up, so ⌘F/⌘L and thread keys don't act behind it.
+        .overlay { if !model.isComposingNewThread, model.forgeAsk == nil { ShortcutLayer(model: model) } }
         .ainkradModal(
             isPresented: Binding(get: { model.isComposingNewThread }, set: { model.isComposingNewThread = $0 }),
             contentWidth: NewThreadSheet.width
         ) {
             NewThreadSheet(model: model) { model.isComposingNewThread = false }
-                // An asked-for project and request are for this sheet only.
-                .onDisappear { model.newThreadPreset = nil }
         }
         .ainkradToastHost()
         .ainkradHostTheme(theme)
@@ -88,6 +86,8 @@ struct MainPane: View {
         Group {
             if model.isShowingSettings {
                 SettingsView(model: model)
+            } else if let ask = model.forgeAsk {
+                ForgeAskView(model: model, ask: ask).id(ask)
             } else {
                 content
             }

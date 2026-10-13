@@ -50,9 +50,9 @@ extension GrimoireModel {
         }
     }
 
-    /// A payload another app sent with opening this window. Ask Agent opens the New Thread sheet on its project with
-    /// its request (and Forge's selection as a chip) — nothing is sent unseen. "Ask about this turn…" was sent in
-    /// Forge's review, so it continues that thread at once.
+    /// A payload another app sent with opening this window. Ask Agent becomes a new thread waiting in the main
+    /// pane — its project, request and Forge's selection prefilled, nothing sent unseen. "Ask about this turn…" was
+    /// sent in Forge's review, so it continues that thread at once.
     func handleLaunch(_ payload: String?) {
         guard let ask = AskLaunch.decode(payload) else { return }
         if let thread = ask.thread, projects.lazy.flatMap(\.sessions).contains(where: { $0.id == thread }) {
@@ -60,8 +60,10 @@ extension GrimoireModel {
         }
         if !projects.contains(where: { $0.path == ask.path }) { openFolder(URL(fileURLWithPath: ask.path)) }
         let context = ask.context
-        newThreadPreset = NewThreadPreset(project: ask.path, prompt: context == nil ? ask.prompt : ask.request ?? "", context: context)
-        isComposingNewThread = true
+        isComposingNewThread = false
+        isShowingSettings = false
+        selectedThreadID = nil  // clears any earlier ask, so set it first
+        forgeAsk = ForgeAsk(project: ask.path, prompt: context == nil ? ask.prompt : ask.request ?? "", context: context)
     }
 
     /// Selects `thread` and sends `text` to it once it is open.

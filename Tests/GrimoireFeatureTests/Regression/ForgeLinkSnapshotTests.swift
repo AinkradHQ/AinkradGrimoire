@@ -5,7 +5,7 @@ import XCTest
 @testable import GrimoireFeature
 
 /// E5 (screen 11): "↗ Forge" on Grep rows, a Read, an Edit header and its diff lines, the review pane's file and
-/// "Review in Forge"; and the New Thread sheet arriving from Forge ⌘I with its selection. Snapshots cannot hover,
+/// "Review in Forge"; and Forge's ⌘I arriving inline with its selection. Snapshots cannot hover,
 /// so the pills are revealed by `revealsForgePills`. See `Snapshot`.
 @MainActor
 final class ForgeLinkSnapshotTests: XCTestCase {
@@ -44,16 +44,26 @@ final class ForgeLinkSnapshotTests: XCTestCase {
             size: CGSize(width: 1260, height: 640))
     }
 
-    func testNewThreadFromForge() {
+    /// Screen 11 B: Forge's ⌘I arrives as a new thread inline in the main pane, prefilled, waiting for Send.
+    func testAskFromForgeArrivesInline() throws {
         let model = GrimoireModel(
             settings: SettingsStore(documents: MemoryDocs()),
             sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
-        model.newThreadPreset = NewThreadPreset(
-            project: "/Users/me/Projects/Ainkrad", prompt: "Make the selection capsule animate in with the motion budget",
-            context: AskContext(
-                project: "/Users/me/Projects/Ainkrad", file: "Sources/Ainkrad/Features/Sidebar/SidebarRow.swift", lines: 18...21,
-                code: "        .background {\n            if isSelected { Capsule().glassEffect(.regular) }\n        }\n        .contentShape(Rectangle())"))
+        let now = Date(timeIntervalSince1970: 1_791_700_000)
+        model.now = { now }
+        let code = "        .background {\n            if isSelected { Capsule().glassEffect(.regular) }\n        }\n        .contentShape(Rectangle())"
+        let payload: [String: Any] = [
+            "kind": "openDocument", "path": "/Users/me/Projects/Ainkrad", "prompt": "…",
+            "request": "Make the selection capsule animate in with the motion budget",
+            "file": "Sources/Ainkrad/Features/Sidebar/SidebarRow.swift", "lines": [18, 21], "code": code,
+        ]
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: payload), as: UTF8.self)
+        model.handleLaunch(json)
         Snapshot.assertMatches(
-            NewThreadSheet(model: model) {}.padding(20), named: "composer-from-forge", size: CGSize(width: 600, height: 620))
+            HStack(spacing: 0) {
+                Sidebar(model: model)
+                MainPane(model: model)
+            },
+            named: "forge-ask-inline", size: CGSize(width: 1100, height: 560))
     }
 }
