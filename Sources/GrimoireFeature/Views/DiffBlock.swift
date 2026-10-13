@@ -8,6 +8,8 @@ struct DiffBlock: View {
     var hasFileLines = false
     /// Each line's number in a faint gutter (mockup 2's Edit card); only where `hasFileLines`.
     var showsGutter = false
+    /// A tick box before each hunk header, for the review pane's "Revert selected".
+    var selection: ((AinkradDiffHunk) -> Binding<Bool>)?
     @Environment(\.ainkradTheme) private var theme
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradStatusColors) private var statusColors
@@ -17,8 +19,13 @@ struct DiffBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(diff.hunks) { hunk in
-                Text("@@ -\(hunk.oldStart),\(hunk.oldCount) +\(hunk.newStart),\(hunk.newCount) @@")
-                    .foregroundStyle(skin.color(skin.text.faint))
+                HStack(spacing: skin.size.s6) {
+                    if let selection {
+                        AinkradCheckbox(isOn: selection(hunk)).help("Select this hunk to revert")
+                    }
+                    Text("@@ -\(hunk.oldStart),\(hunk.oldCount) +\(hunk.newStart),\(hunk.newCount) @@")
+                        .foregroundStyle(skin.color(skin.text.faint))
+                }
                 ForEach(Array(hunk.lines.enumerated()), id: \.offset) { index, line in
                     if let opener, !diff.path.isEmpty {
                         // Every line opens in Forge where it now is (a removed line: where it was).
