@@ -43,6 +43,8 @@ final class LiveThread {
     var attachments: [ImageAttachment] = []
     /// The names of the images sent with each message this run, by its index in `entries` — the bubble's chips.
     private(set) var sentImages: [Int: [String]] = [:]
+    /// The images that went with the last message, so one nothing answered gets them back (GD30).
+    private var lastSentImages: [ImageAttachment] = []
     /// Review comments on lines of the agent's changes, sent ahead of the next message.
     var reviewComments: [ReviewComment] = []
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
@@ -169,6 +171,7 @@ final class LiveThread {
             reviewComments = []
             // Set even when empty: a message taken back out of the transcript left its index free.
             sentImages[entries.count] = imageNames.isEmpty ? nil : imageNames
+            lastSentImages = zip(imageNames, images).map { ImageAttachment(name: $0, image: $1) }
             entries.append(.user(text))
             if status != .needsYou { status = .working }
             if turnStartedAt == nil {
@@ -211,14 +214,23 @@ final class LiveThread {
         engine?.stop()
     }
 
+    /// Sends what is in the composer — its text and its images — and empties it. False when there's no text.
+    @discardableResult
+    func sendDraft() -> Bool {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        let images = attachments
+        draft = ""
+        attachments = []
+        send(text, images: images.map(\.image), imageNames: images.map(\.name))
+        return true
+    }
+
     /// The failure card's Retry: start the agent again and send what is in the composer.
     func retry() {
         failure = nil
         status = .idle
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return ensureStarted() }
-        draft = ""
-        send(text)
+        if !sendDraft() { ensureStarted() }
     }
 
     /// Sends the composer's message at `date` — the usage limit's reset.
@@ -243,10 +255,7 @@ final class LiveThread {
     func sendQueued() {
         guard sendAt != nil else { return }
         sendAt = nil
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        draft = ""
-        send(text)
+        sendDraft()
     }
 
     /// Shows a failure: a usage limit docks the limit bar, anything else gets the card. Either way the
@@ -266,11 +275,12 @@ final class LiveThread {
 
     static func limitNote(_ agent: String) -> String { "\(agent) did not answer — the plan’s usage limit was reached." }
 
-    /// Puts the last message back in the composer when nothing answered it. `removing` takes it out of the
-    /// transcript too (it never got anywhere). True when the composer now holds a message.
+    /// Puts the last message back in the composer, with its images, when nothing answered it. `removing` takes
+    /// it out of the transcript too (it never got anywhere). True when the composer now holds a message.
     private func restoreUnanswered(removing: Bool) -> Bool {
         if case .user(let text) = entries.last, draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             draft = text
+            if attachments.isEmpty { attachments = lastSentImages }
             if removing { entries.removeLast() }
         }
         return !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

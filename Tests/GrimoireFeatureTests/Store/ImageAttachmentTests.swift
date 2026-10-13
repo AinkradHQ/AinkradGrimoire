@@ -76,4 +76,70 @@ struct ImageAttachmentTests {
         #expect(live.sentImages == [0: ["sidebar.png"]])
         #expect(Harness.allCases.filter(\.acceptsImages) == [.claude, .codex, .opencode])
     }
+
+    @Test("GD30: a failed turn puts the images back with the message, and Retry sends them")
+    func retryKeepsImages() {
+        let engine = FakeEngine()
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { engine })
+        let image = EngineImage(mediaType: "image/png", base64: "AAA")
+        live.draft = "look"
+        live.attachments = [ImageAttachment(name: "sidebar.png", image: image)]
+        live.sendDraft()
+        #expect(live.attachments.isEmpty)
+        live.apply(.exited(code: 1))
+        #expect(live.failure != nil)
+        #expect(live.draft == "look")
+        #expect(live.attachments.map(\.name) == ["sidebar.png"])
+        live.retry()
+        #expect(engine.images == [[image], [image]])
+        #expect(live.attachments.isEmpty)
+    }
+
+    @Test("GD30: a usage-limited turn keeps the images in the composer, and Send at reset sends them")
+    func sendAtResetKeepsImages() {
+        let engine = FakeEngine()
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { engine })
+        let image = EngineImage(mediaType: "image/png", base64: "AAA")
+        live.draft = "look"
+        live.attachments = [ImageAttachment(name: "sidebar.png", image: image)]
+        live.sendDraft()
+        live.apply(
+            .turnFinished(
+                TurnResult(outcome: .failed("Claude AI usage limit reached|1791704320"), sessionID: "s", costUSD: nil, text: nil)))
+        #expect(live.hitLimit)
+        #expect(live.attachments.map(\.name) == ["sidebar.png"])
+        live.sendAtReset(Date(timeIntervalSince1970: 1_791_704_320))
+        live.sendQueued()
+        #expect(engine.images == [[image], [image]])
+        #expect(live.sentImages[2] == ["sidebar.png"])
+    }
+
+    @Test("GD30: New thread with Codex carries the composer's images")
+    func carryOverKeepsImages() throws {
+        let model = GrimoireModel(
+            settings: SettingsStore(documents: MemoryDocs()),
+            sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
+        model.cli = .found(path: "/usr/bin/true", version: "2.1.296")
+        model.otherCLIs[.codex] = .found(path: "/usr/bin/true", version: "0.154.0")
+        var engines: [FakeEngine] = []
+        model.engineOverride = {
+            let engine = FakeEngine()
+            engines.append(engine)
+            return engine
+        }
+        model.startThread(project: "/repo", prompt: "first", model: nil, mode: .ask, worktree: false)
+        let claude = try #require(model.selectedThread)
+        let live = try #require(model.current)
+        let image = EngineImage(mediaType: "image/png", base64: "AAA")
+        live.draft = "look"
+        live.attachments = [ImageAttachment(name: "sidebar.png", image: image)]
+        model.carryOver(claude, to: .codex)
+        #expect(engines.last?.sent == ["look"])
+        #expect(engines.last?.images == [[image]])
+        #expect(live.attachments.isEmpty)
+    }
 }

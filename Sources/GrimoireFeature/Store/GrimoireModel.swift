@@ -207,7 +207,7 @@ final class GrimoireModel {
     /// draft; when the CLI names the session the draft takes that id.
     func startThread(
         project: String, prompt: String, model: String?, mode: PermissionMode, worktree: Bool,
-        harness: Harness = .claude
+        harness: Harness = .claude, images: [ImageAttachment] = []
     ) {
         let placeholder = "new-\(UUID().uuidString)"
         // Only Claude Code has a worktree flag.
@@ -227,7 +227,7 @@ final class GrimoireModel {
         draftThreads.insert(draft, at: 0)
         liveThreads[placeholder] = live
         selectedThreadID = placeholder
-        live.send(prompt)
+        live.send(prompt, images: images.map(\.image), imageNames: images.map(\.name))
     }
 
     /// Continues `thread` as a new session with the same history. The fork
