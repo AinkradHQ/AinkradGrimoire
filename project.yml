@@ -22,7 +22,8 @@ packages:
     # bdf3b0d: Grimoire E1 — AinkradMarkdownText, AinkradDiffReview, AinkradDecisionBar, AinkradComposer (#108–#110).
     # AHEAD of the released host (0.30.0 embeds aa3fc95): loads only in a Debug host until the next host release.
     # 41cd9d9: markdown pipe tables and block quotes in AinkradMarkdownText (#111).
-    revision: 41cd9d9443e89bda6a08e0400a4a8d1377df3308
+    # 51655c2: AinkradMenuButton.kitMenuUnderGlass() opt-in (#112, Forge FD20).
+    revision: 51655c243aab09146e8db97df9b72ee0ba5cc52c
 targets:
   GrimoireFeature:
     type: library.static
