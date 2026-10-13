@@ -157,7 +157,7 @@ private struct EntryRow: View {
     }
 }
 
-/// The person's message: a tinted card on the right.
+/// The person's message: a tinted card on the right, markdown rendered as replies are (GD1).
 private struct UserBubble: View {
     let text: String
     @Environment(\.ainkradSkin) private var skin
@@ -166,9 +166,7 @@ private struct UserBubble: View {
     var body: some View {
         HStack {
             Spacer(minLength: skin.size.s120)
-            Text(text)
-                .font(skin.font(AinkradFontToken(sizeKey: "t13")))
-                .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
+            message
                 .textSelection(.enabled)
                 .padding(.horizontal, skin.size.s14)
                 .padding(.vertical, skin.size.s10)
@@ -176,6 +174,23 @@ private struct UserBubble: View {
                 .overlay(
                     skin.shape(cut: AinkradRadius.md).stroke(
                         theme.accentPrimary.opacity(skin.opacity.o55), lineWidth: 1))
+        }
+    }
+
+    /// Prose stays one hugging `Text` (inline markdown only); a code block, list or table takes the kit's renderer.
+    @ViewBuilder
+    private var message: some View {
+        let blocks = AinkradMarkdownBlocks.parse(text)
+        if blocks.allSatisfy({ if case .paragraph = $0 { true } else { false } }) {
+            Text(
+                (try? AttributedString(
+                    markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+                    ?? AttributedString(text)
+            )
+            .font(skin.font(AinkradFontToken(sizeKey: "t13")))
+            .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
+        } else {
+            AinkradMarkdownText(blocks: blocks)
         }
     }
 }
