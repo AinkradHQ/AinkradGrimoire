@@ -94,7 +94,11 @@ struct OpenCodeProtocol {
             if properties["status"]?["type"] == "retry" {
                 return [.status("retrying: \(properties["status"]?["message"]?.stringValue ?? "")")]
             }
-            return properties["status"]?["type"] == "busy" ? [.status("working")] : []
+            guard properties["status"]?["type"] == "busy" else { return [] }
+            // A turn starts. OpenCode repeats a failed turn's error after its `session.idle`; left set, that
+            // stale error would fail the next turn too (GD8).
+            ending = nil
+            return [.status("working")]
         case "session.error":
             let error = properties["error"] ?? .null
             ending =
