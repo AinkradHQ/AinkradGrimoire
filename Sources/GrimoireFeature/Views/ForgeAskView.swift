@@ -2,8 +2,9 @@ import AinkradAppKit
 import SwiftUI
 
 /// Forge's ⌘I, arrived (screen 11 B): a new thread in the main pane, prefilled — the selection as a chip (↗ back to
-/// Forge, ✕ leaves the code out), the code read-only, the request in the field. Nothing runs until Send; Esc
-/// discards. The agent, project, mode and model can still be changed in the composer's strip.
+/// Forge, ✕ leaves the code out), the code read-only, the request in the field. Nothing runs until Send; only
+/// the header's ✕ discards — Esc is left to the composer, which closes its `@` list with it. The agent, project,
+/// mode and model can still be changed in the composer's strip.
 struct ForgeAskView: View {
     let model: GrimoireModel
     @State private var project: String
@@ -38,13 +39,6 @@ struct ForgeAskView: View {
                 .padding(.horizontal, skin.size.s14)
                 .padding(.bottom, skin.size.s14)
         }
-        .background {
-            Button("Discard", action: discard)  // design-lint: allow raw-control key-equivalent claim
-                .keyboardShortcut(.escape, modifiers: [])
-                .opacity(0)
-                .frame(width: 0, height: 0)
-                .accessibilityHidden(true)
-        }
     }
 
     /// "New thread", and where it will run: project · agent · from Forge ⌘I.
@@ -66,7 +60,7 @@ struct ForgeAskView: View {
                 .lineLimit(1)
             }
             Spacer(minLength: skin.size.s8)
-            AinkradIconButton(systemName: "xmark", size: skin.size.s26, tooltip: "Discard (Esc)") { discard() }
+            AinkradIconButton(systemName: "xmark", size: skin.size.s26, tooltip: "Discard") { discard() }
         }
         .padding(.horizontal, skin.size.s20)
         .padding(.top, skin.size.s14)
@@ -85,11 +79,7 @@ struct ForgeAskView: View {
                 HStack(spacing: skin.spacing.sm) { menus(captions: false) }
             }
         } trailing: {
-            Text("Esc discards")
-                .font(skin.font(AinkradFontToken(sizeKey: "t11")))
-                .foregroundStyle(skin.color(skin.text.faint))
-                .lineLimit(1)
-                .fixedSize()
+            EmptyView()
         }
     }
 

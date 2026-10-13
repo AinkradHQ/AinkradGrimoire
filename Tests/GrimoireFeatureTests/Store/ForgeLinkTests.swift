@@ -87,7 +87,7 @@ struct ForgeLinkTests {
         // An older Forge's askAgent (no parts) arrives the same way, its whole prompt in the field.
         model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"Explain this"}"#)
         #expect(model.forgeAsk == ForgeAsk(project: "/p", prompt: "Explain this", context: nil))
-        // Opening a thread leaves the ask (Esc and ✕ clear it the same way).
+        // Opening a thread leaves the ask (the header's ✕ clears it the same way; Esc does not).
         model.selectedThreadID = "s1"
         #expect(model.forgeAsk == nil)
 
