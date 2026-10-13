@@ -10,16 +10,17 @@ struct NoAgentView: View {
     let searched: String
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradTheme) private var theme
+    @Environment(\.ainkradTypography) private var typography
     @State private var isNarrow = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.size.s14) {
             HStack(spacing: skin.size.s12) {
-                Image(systemName: "terminal")
-                    .font(skin.font(AinkradFontToken(sizeKey: "t20")))
+                Text("⌁")
+                    .font(skin.font(AinkradFontToken(sizeKey: "t28")))
                     .foregroundStyle(theme.accentSecondary)
                 Text("No coding agent found")
-                    .font(skin.font(AinkradFontToken(sizeKey: "t16", weight: "semibold")))
+                    .font(skin.font(AinkradFontToken(sizeKey: "t17", weight: "semibold")))
                     .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
             }
             Text("Grimoire drives the agent CLIs you already use. Install one, then check again — or point Grimoire at a binary.")
@@ -38,13 +39,23 @@ struct NoAgentView: View {
                     .font(skin.font(AinkradFontToken(sizeKey: "t10", weight: "semibold")))
                     .foregroundStyle(skin.color(skin.text.muted))
                 FlowLayout(spacing: skin.size.s6) {
-                    ForEach(Self.folders(searched), id: \.self) { AinkradChip(label: $0) }
+                    // Mockup `.pth`: quiet mono folder names on a faint fill.
+                    ForEach(Self.folders(searched), id: \.self) { folder in
+                        Text(folder)
+                            .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                            .foregroundStyle(skin.color(skin.text.muted))
+                            .padding(.horizontal, skin.size.s8)
+                            .padding(.vertical, skin.size.s2)
+                            .background(
+                                RoundedRectangle(cornerRadius: skin.size.s6, style: .continuous)
+                                    .fill(skin.color(skin.palette.white).opacity(skin.opacity.o05)))
+                    }
                 }
             }
             // Narrow (GD26), the buttons wrap rather than run off the edge.
             FlowLayout(spacing: skin.size.s8) { buttons }
         }
-        .frame(maxWidth: skin.size.s640, alignment: .leading)
+        .frame(maxWidth: skin.size.s640 + skin.size.s120, alignment: .leading)
         // The mockup's 48 pt sides where there is room; 20 in a narrow window (GD26).
         .padding(.horizontal, isNarrow ? skin.size.s20 : skin.size.s48)
         .padding(.vertical, skin.size.s24)
@@ -99,17 +110,30 @@ private struct InstallRow: View {
                     .textSelection(.enabled)
                     .fixedSize()
             }
-            // "Copy", flipping to "✓ Copied" for 1.5 s (mockup 12 A).
-            AinkradButton(title: copied ? "Copied" : "Copy", style: .ghost, icon: copied ? "checkmark" : nil) { copy() }
-                .fixedSize()
-                .opacity(isHovering || copied ? 1 : skin.opacity.o55)
+            // Plain "Copy" text, tinted on hover; "✓ Copied" for 1.5 s (mockup 12 A).
+            Button(action: copy) {  // design-lint: allow raw-control text button (mockup's `.copy` is plain text)
+                Text(copied ? "✓ Copied" : "Copy")
+                    .font(skin.font(AinkradFontToken(sizeKey: "t11")))
+                    .foregroundStyle(skin.usesNativeGlass ? theme.foreground : theme.accentSecondary)
+                    .padding(.horizontal, skin.size.s8)
+                    .padding(.vertical, skin.size.s2)
+                    .background(
+                        Capsule().fill(isHovering || copied ? theme.accentSecondary.opacity(skin.opacity.o12) : .clear))
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .fixedSize()
+            .opacity(isHovering || copied ? 1 : skin.opacity.o55)
         }
         .padding(.leading, skin.size.s12)
         .padding(.trailing, skin.size.s8)
-        .padding(.vertical, skin.size.s6)
+        .padding(.vertical, skin.size.s7)
+        // Mockup `.cmd`: 8 pt corners, a dark wash that lightens on hover.
         .background(
-            skin.shape(cut: AinkradRadius.sm).fill(
-                theme.surface.opacity(isHovering ? skin.opacity.o90 : skin.opacity.o60))
+            RoundedRectangle(cornerRadius: skin.size.s8, style: .continuous).fill(
+                isHovering
+                    ? skin.color(skin.palette.white).opacity(skin.opacity.o06)
+                    : skin.color(skin.palette.black).opacity(skin.opacity.o25))
         )
         .onHover { isHovering = $0 }
     }
