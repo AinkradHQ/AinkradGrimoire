@@ -27,6 +27,8 @@ struct CodexProtocol {
     /// Mode and model apply to the next `turn/start` (Codex sets them per turn).
     var mode: PermissionMode = .ask
     var model: String?
+    /// Reasoning effort, likewise per turn.
+    var effort: String?
     /// Server-request ids we turned into approvals: answers must echo the id.
     private var approvalKinds: [String: ApprovalKind] = [:]
 
@@ -53,6 +55,7 @@ struct CodexProtocol {
     mutating func startThread(_ options: EngineStartOptions) -> JSONValue {
         mode = options.permissionMode ?? mode
         model = options.model ?? model
+        effort = options.effort ?? effort
         var params: [String: JSONValue] = [
             "cwd": .string(options.workingDirectory.path),
             "approvalPolicy": .string(Self.approvalPolicy(for: mode)),
@@ -79,6 +82,7 @@ struct CodexProtocol {
             "sandboxPolicy": Self.sandboxPolicy(for: mode),
         ]
         if let model { params["model"] = .string(model) }
+        if let effort { params["effort"] = .string(effort) }
         return request(.turnStart, method: "turn/start", params: .object(params))
     }
 

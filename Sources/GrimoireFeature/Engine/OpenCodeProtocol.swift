@@ -15,6 +15,8 @@ struct OpenCodeProtocol {
     var mode: PermissionMode = .ask
     /// `provider/model`; nil uses OpenCode's configured default.
     var model: String?
+    /// The model's `variant` (OpenCode's provider-specific reasoning effort); nil uses the model's default.
+    var effort: String?
     /// What each streaming part is, so a delta knows whether it's text.
     private var partKinds: [String: String] = [:]
     /// Messages the user sent: their parts echo the prompt and are not shown again.
@@ -47,6 +49,7 @@ struct OpenCodeProtocol {
         }
         parts.append(["type": "text", "text": .string(text)])
         var body: [String: JSONValue] = ["parts": .array(parts), "agent": .string(Self.agent(for: mode))]
+        if let effort { body["variant"] = .string(effort) }
         if let model, let slash = model.firstIndex(of: "/") {
             body["model"] = [
                 "providerID": .string(String(model[..<slash])), "modelID": .string(String(model[model.index(after: slash)...])),

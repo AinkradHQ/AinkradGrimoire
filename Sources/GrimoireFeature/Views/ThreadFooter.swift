@@ -41,6 +41,12 @@ struct ThreadFooter: View {
                     HStack(spacing: skin.spacing.sm) {
                         modeMenu(captions: true)
                         modelMenu(captions: true)
+                        EffortMenu(live: live, harness: harness, captions: true)
+                    }
+                    HStack(spacing: skin.spacing.sm) {
+                        modeMenu(captions: false)
+                        modelMenu(captions: false)
+                        EffortMenu(live: live, harness: harness, captions: false)
                     }
                     HStack(spacing: skin.spacing.sm) {
                         modeMenu(captions: false)

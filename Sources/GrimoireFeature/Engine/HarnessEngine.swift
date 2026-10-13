@@ -16,6 +16,8 @@ public protocol HarnessEngine: AnyObject {
     func answer(_ request: ApprovalRequest, with decision: ApprovalDecision) throws
     func setPermissionMode(_ mode: PermissionMode) throws
     func setModel(_ model: String) throws
+    /// How hard the model thinks (`Harness.efforts`); applies from the next turn at the latest.
+    func setEffort(_ effort: String) throws
     /// Ends the session: closes stdin, then terminates the process.
     func stop()
 }
@@ -30,10 +32,12 @@ public struct EngineStartOptions: Sendable, Equatable {
     /// creates `<repo>/.claude/worktrees/<name>`). Ignored when resuming:
     /// a resumed session runs where it ran before.
     public var worktree: String?
+    /// Reasoning effort (`Harness.efforts`); nil leaves the CLI's own default.
+    public var effort: String?
 
     public init(
         workingDirectory: URL, model: String? = nil, permissionMode: PermissionMode? = nil, resume: String? = nil,
-        fork: Bool = false, worktree: String? = nil
+        fork: Bool = false, worktree: String? = nil, effort: String? = nil
     ) {
         self.workingDirectory = workingDirectory
         self.model = model
@@ -41,6 +45,7 @@ public struct EngineStartOptions: Sendable, Equatable {
         self.resume = resume
         self.fork = fork
         self.worktree = worktree
+        self.effort = effort
     }
 }
 
@@ -165,5 +170,6 @@ final class UnavailableEngine: HarnessEngine {
     func answer(_ request: ApprovalRequest, with decision: ApprovalDecision) throws {}
     func setPermissionMode(_ mode: PermissionMode) throws {}
     func setModel(_ model: String) throws {}
+    func setEffort(_ effort: String) throws {}
     func stop() {}
 }

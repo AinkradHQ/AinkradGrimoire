@@ -10,6 +10,8 @@ struct ClaudeProtocol {
         case initialize
         case permissionMode(PermissionMode)
         case model(String)
+        /// `apply_flag_settings` with `effortLevel` — the session's `/effort`.
+        case effort(String)
         case interrupt
     }
 
@@ -26,6 +28,7 @@ struct ClaudeProtocol {
         ]
         if let model = options.model { arguments += ["--model", model] }
         if let mode = options.permissionMode { arguments += ["--permission-mode", mode.rawValue] }
+        if let effort = options.effort { arguments += ["--effort", effort] }
         if let resume = options.resume {
             arguments += ["--resume", resume]
             if options.fork { arguments.append("--fork-session") }
@@ -63,6 +66,8 @@ struct ClaudeProtocol {
         case .initialize: request = ["subtype": "initialize"]
         case .permissionMode(let mode): request = ["subtype": "set_permission_mode", "mode": .string(mode.rawValue)]
         case .model(let model): request = ["subtype": "set_model", "model": .string(model)]
+        case .effort(let effort):
+            request = ["subtype": "apply_flag_settings", "settings": ["effortLevel": .string(effort)]]
         case .interrupt:
             interruptRequested = true
             request = ["subtype": "interrupt"]
@@ -230,7 +235,7 @@ struct ClaudeProtocol {
         case .initialize: return [.commands(Self.commands(response["response"]?["commands"]))]
         case .permissionMode(let mode): return [.permissionModeChanged(mode)]
         case .model(let model): return [.modelChanged(model)]
-        case .interrupt: return []
+        case .interrupt, .effort: return []
         }
     }
 

@@ -36,6 +36,7 @@ public final class AgyEngine: HarnessEngine {
         wire.conversationID = options.resume
         wire.mode = options.permissionMode ?? .ask
         wire.model = options.model
+        wire.effort = options.effort
         try spawn()
         // agy has no handshake: it is ready once spawned, so the thread stops showing its startup steps.
         continuation.yield(.status("started"))
@@ -69,6 +70,12 @@ public final class AgyEngine: HarnessEngine {
         wire.model = model
         if !isBusy { end() }
         continuation.yield(.modelChanged(model))
+    }
+
+    /// A flag at spawn, like the model: the next message restarts agy with it.
+    public func setEffort(_ effort: String) throws {
+        wire.effort = effort
+        if !isBusy { end() }
     }
 
     public func stop() {

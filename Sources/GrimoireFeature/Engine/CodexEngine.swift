@@ -74,6 +74,11 @@ public final class CodexEngine: HarnessEngine {
         continuation.yield(.modelChanged(model))
     }
 
+    /// Like the model: rides along with the next `turn/start`.
+    public func setEffort(_ effort: String) throws {
+        wire.effort = effort
+    }
+
     public func stop() {
         stopping = true
         process?.stop()
