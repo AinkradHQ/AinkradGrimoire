@@ -162,5 +162,36 @@ struct ImageAttachmentTests {
         #expect(!monitor.contains(other))
         #expect(!monitor.contains(NSTextView(frame: composerScroll.frame)), "not in this window")
     }
+
+    @Test("Couldn't send: a message the engine refused stays in the composer with its images")
+    func sendFailureKeepsMessage() {
+        let engine = FakeEngine()
+        engine.sendError = CocoaError(.fileWriteUnknown)
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { engine })
+        let image = EngineImage(mediaType: "image/png", base64: "AAA")
+        live.draft = "look"
+        live.attachments = [ImageAttachment(name: "sidebar.png", image: image)]
+        live.sendDraft()
+        guard case .failed(let message) = live.status else { return #expect(Bool(false), "not failed") }
+        #expect(message.hasPrefix("Couldn't send"))
+        #expect(live.entries.isEmpty)
+        #expect(live.draft == "look")
+        #expect(live.attachments.map(\.name) == ["sidebar.png"])
+        #expect(live.attachments.map(\.image) == [image])
+        // An agent that never started keeps it the same way, and its card says so.
+        let dead = FakeEngine()
+        dead.startError = CocoaError(.fileNoSuchFile)
+        let unstarted = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { dead })
+        unstarted.draft = "look"
+        unstarted.attachments = [ImageAttachment(name: "sidebar.png", image: image)]
+        unstarted.sendDraft()
+        #expect(unstarted.draft == "look")
+        #expect(unstarted.attachments.map(\.name) == ["sidebar.png"])
+        #expect(unstarted.failure?.restoredDraft == true)
+    }
 }
 

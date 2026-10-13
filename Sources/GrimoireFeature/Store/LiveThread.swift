@@ -164,15 +164,19 @@ final class LiveThread {
         hitLimit = false
         cancelSendAtReset()
         ensureStarted()
-        guard let engine else { return }
-        let text = reviewComments.isEmpty ? text : ReviewChanges.message(for: reviewComments, then: text)
+        guard let engine else {
+            // The agent didn't start: the card says so, and the message waits in the composer.
+            if keepUnsent(text, images: images, imageNames: imageNames) { failure?.restoredDraft = true }
+            return
+        }
+        let wire = reviewComments.isEmpty ? text : ReviewChanges.message(for: reviewComments, then: text)
         do {
-            try engine.send(text, images: images)
+            try engine.send(wire, images: images)
             reviewComments = []
             // Set even when empty: a message taken back out of the transcript left its index free.
             sentImages[entries.count] = imageNames.isEmpty ? nil : imageNames
             lastSentImages = zip(imageNames, images).map { ImageAttachment(name: $0, image: $1) }
-            entries.append(.user(text))
+            entries.append(.user(wire))
             if status != .needsYou { status = .working }
             if turnStartedAt == nil {
                 turnStartedAt = clock()
@@ -180,7 +184,19 @@ final class LiveThread {
             }
         } catch {
             status = .failed("Couldn't send: \(error.localizedDescription)")
+            keepUnsent(text, images: images, imageNames: imageNames)
         }
+    }
+
+    /// A message that never left goes back into an empty composer, with its images. True when it did.
+    @discardableResult
+    private func keepUnsent(_ text: String, images: [EngineImage], imageNames: [String]) -> Bool {
+        guard draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, attachments.isEmpty,
+            !text.isEmpty || !images.isEmpty
+        else { return false }
+        draft = text
+        attachments = zip(imageNames, images).map { ImageAttachment(name: $0, image: $1) }
+        return true
     }
 
     func interrupt() {
