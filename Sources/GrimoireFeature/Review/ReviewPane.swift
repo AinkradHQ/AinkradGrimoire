@@ -226,6 +226,15 @@ private struct FileCard: View {
             .contentShape(Rectangle())
             .onTapGesture { isExpanded.toggle() }
             .onHover { hovering = $0 }
+            // The keyboard's fold (GD35): Tab reaches the header with keyboard navigation on; Space or ↵ folds.
+            .focusable(interactions: .activate)
+            .onKeyPress(keys: [.space, .return]) { _ in
+                isExpanded.toggle()
+                return .handled
+            }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { isExpanded.toggle() }
+            .accessibilityHint(isExpanded ? "Folds the file" : "Unfolds the file")
 
             if isExpanded {
                 if let diff = file.diff, !diff.hunks.isEmpty {

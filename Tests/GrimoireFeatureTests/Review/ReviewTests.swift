@@ -101,6 +101,20 @@ struct ReviewChangesTests {
     }
 
     @MainActor
+    @Test("GD35: the keyboard's line starts on the first change and ↑↓ walk every line across hunks, kept in range")
+    func keyboardLines() {
+        let diff = ReviewChanges.parseUnifiedDiff(
+            "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -1,2 +1,2 @@\n keep\n-old\n+new\n@@ -9 +9 @@\n-x\n+y\n")[0].diff!
+        let places = DiffBlock.places(diff)
+        #expect(places.map { $0.hunk.lines[$0.index].text } == ["keep", "old", "new", "x", "y"])
+        #expect(DiffBlock.firstChange(places) == 1)
+        #expect(DiffBlock.move(2, .down, count: places.count) == 3, "into the next hunk")
+        #expect(DiffBlock.move(4, .down, count: places.count) == 4)
+        #expect(DiffBlock.move(0, .up, count: places.count) == 0)
+        #expect(DiffBlock.move(3, .left, count: places.count) == 3)
+    }
+
+    @MainActor
     @Test("comments wait on the thread and go ahead of the next message, or alone with Send")
     func commentsGoWithTheNextMessage() async {
         let engine = FakeEngine()
