@@ -125,6 +125,20 @@ struct ReviewChangesTests {
     }
 
     @MainActor
+    @Test("GD40: VoiceOver hears which line the keyboard picked: its number, the change, the text")
+    func keyboardLineSpoken() {
+        let diff = ReviewChanges.parseUnifiedDiff(
+            "diff --git a/a b/a\n--- a/a\n+++ b/a\n@@ -57,2 +57,2 @@\n keep\n-old\n+new\r\n")[0].diff!
+        let places = DiffBlock.places(diff)
+        #expect(DiffBlock.spoken(places, at: 0, hasFileLines: true) == "line 57, unchanged: keep")
+        #expect(DiffBlock.spoken(places, at: 1, hasFileLines: true) == "line 58, removed: old")
+        #expect(DiffBlock.spoken(places, at: 2, hasFileLines: true) == "line 58, added: new")
+        #expect(DiffBlock.spoken(places, at: 2, hasFileLines: false) == "line 3 of 3, added: new")
+        #expect(DiffBlock.spoken(places, at: nil, hasFileLines: true) == "")
+        #expect(DiffBlock.spoken(places, at: 9, hasFileLines: true) == "")
+    }
+
+    @MainActor
     @Test("comments wait on the thread and go ahead of the next message, or alone with Send")
     func commentsGoWithTheNextMessage() async {
         let engine = FakeEngine()

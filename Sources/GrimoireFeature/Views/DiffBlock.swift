@@ -78,7 +78,11 @@ struct DiffBlock: View {
         }
         .onMoveCommand { direction in
             guard let cursor else { return }
-            self.cursor = Self.move(cursor, direction, count: places.count)
+            let moved = Self.move(cursor, direction, count: places.count)
+            guard moved != cursor else { return }
+            self.cursor = moved
+            // VoiceOver says the line ↑↓ picked, not only the drawn stroke (GD40).
+            AccessibilityNotification.Announcement(Self.spoken(places, at: moved, hasFileLines: hasFileLines)).post()
         }
         .onKeyPress(keys: [.return, .space]) { _ in
             guard let onLineTap, let cursor, places.indices.contains(cursor) else { return .ignored }
@@ -86,6 +90,7 @@ struct DiffBlock: View {
             return .handled
         }
         .accessibilityHint(onLineTap == nil ? "" : "Up and down pick a line; Return comments on it")
+        .accessibilityValue(onLineTap == nil ? "" : Self.spoken(places, at: cursor, hasFileLines: hasFileLines))
     }
 
     private func row(_ line: AinkradDiffLine, number: Int) -> some View {
@@ -181,6 +186,22 @@ extension DiffBlock {
         case .down: min(cursor + 1, max(count - 1, 0))
         default: cursor
         }
+    }
+
+    /// The keyboard's line as VoiceOver reads it (GD40): "line 58, added: let x = 1" — the file's number where the
+    /// hunks carry it, else its place in the diff.
+    static func spoken(_ places: [(hunk: AinkradDiffHunk, index: Int)], at cursor: Int?, hasFileLines: Bool) -> String {
+        guard let cursor, places.indices.contains(cursor) else { return "" }
+        let (hunk, index) = places[cursor]
+        let line = hunk.lines[index]
+        let kind = switch line.kind {
+        case .insertion: "added"
+        case .deletion: "removed"
+        case .context: "unchanged"
+        }
+        let number = hasFileLines ? "line \(fileLine(hunk, at: index))" : "line \(cursor + 1) of \(places.count)"
+        let text = line.text.hasSuffix("\r") ? String(line.text.dropLast()) : line.text
+        return "\(number), \(kind): \(text.trimmingCharacters(in: .whitespaces))"
     }
 
     /// Hunk line `index`'s line in the file: the new side's, or the old side's for a removed line.
