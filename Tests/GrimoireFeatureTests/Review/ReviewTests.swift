@@ -250,6 +250,54 @@ struct ReviewUnicodePathTests {
 }
 
 @MainActor
+@Suite("ReviewModel literal pathspecs (real git)")
+struct ReviewLiteralPathTests {
+    /// A name with glob characters is a path, not a pattern: `a[1]*.swift` must not also match `a1x.swift`.
+    @Test("Revert and Commit touch only the file named a[1]*.swift, not a1x.swift beside it")
+    func globCharactersAreLiteral() async throws {
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-glob-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let environment = CLILocator.loginEnvironment()
+        let git = Git(directory: repo.path, environment: environment)
+        _ = try await git.run(["init", "-q", "-b", "feature"])
+        _ = try await git.run(["config", "user.email", "t@t"])
+        _ = try await git.run(["config", "user.name", "t"])
+        let glob = repo.appendingPathComponent("a[1]*.swift")
+        let plain = repo.appendingPathComponent("a1x.swift")
+        for file in [glob, plain] { try "one\n".write(to: file, atomically: true, encoding: .utf8) }
+        _ = try await git.run(["add", "."])
+        _ = try await git.run(["commit", "-q", "-m", "root"])
+
+        for file in [glob, plain] { try "two\n".write(to: file, atomically: true, encoding: .utf8) }
+        let edit = ThreadEntry.tool(
+            ToolCall(
+                id: "1", name: "Edit",
+                input: ["file_path": .string(glob.path), "old_string": "one", "new_string": "two"],
+                result: ToolOutput(content: "ok", isError: false)))
+        let live = LiveThread(
+            entries: [.user("go"), edit], startOptions: EngineStartOptions(workingDirectory: repo),
+            makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        await review.load()
+        #expect(review.files.map(\.path) == ["a[1]*.swift"])
+
+        await review.revert(FileChange(path: "a[1]*.swift", status: .modified))
+        #expect(review.error == nil)
+        #expect(try String(contentsOf: glob, encoding: .utf8) == "one\n")
+        #expect(try String(contentsOf: plain, encoding: .utf8) == "two\n", "a1x.swift is not reverted with it")
+
+        try "two\n".write(to: glob, atomically: true, encoding: .utf8)
+        await review.load()
+        review.commitMessage = "only the glob-named file"
+        await review.commit()
+        #expect(review.error == nil)
+        #expect(try await git.run(["show", "--name-only", "--format=", "HEAD"]).split(separator: "\n") == ["a[1]*.swift"])
+        #expect(try await git.run(["status", "--porcelain"]).contains("a1x.swift"), "a1x.swift stays uncommitted")
+    }
+}
+
+@MainActor
 @Suite("ReviewModel commit scope (real git)")
 struct ReviewCommitScopeTests {
     private func repo() async throws -> (URL, Git, [String: String]) {
