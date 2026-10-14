@@ -76,15 +76,18 @@ final class MockupFeatureSnapshotTests: XCTestCase {
             "            if isSelected { Capsule().glassEffect(.regular) }", "        }",
             "        .contentShape(Rectangle())",
         ]
-        try (before + edited + ["}"]).joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
         let input: JSONValue = [
             "file_path": .string(file.path),
             "old_string": "        .padding(.horizontal, skin.size.s8)\n        .overlay(alignment: .bottom) { Rectangle().frame(height: 1) }\n        .contentShape(Rectangle())",
             "new_string": .string(edited.joined(separator: "\n")),
         ]
-        Snapshot.assertMatches(
-            EditDiffBlock(diff: ToolSummary.editDiff(input), path: file.path).padding(12), named: "edit-line-numbers",
-            size: CGSize(width: 640, height: 200))
+        // A CRLF file numbers the same as an LF one (GD49): same golden.
+        for newline in ["\n", "\r\n"] {
+            try (before + edited + ["}"]).joined(separator: newline).write(to: file, atomically: true, encoding: .utf8)
+            Snapshot.assertMatches(
+                EditDiffBlock(diff: ToolSummary.editDiff(input), path: file.path).padding(12), named: "edit-line-numbers",
+                size: CGSize(width: 640, height: 200))
+        }
     }
 
     /// Mockup 3's composer: image chips with ✕, the strip's Effort and 📎.

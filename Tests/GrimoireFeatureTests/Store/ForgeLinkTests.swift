@@ -44,6 +44,16 @@ struct ForgeLinkTests {
         #expect(diff.located(in: "nothing like it\n") == nil, "falls back to the snippet")
     }
 
+    /// GD49: a CRLF file kept "\r" on every line, so no edit could be placed in it.
+    @Test func anEditIsPlacedInACRLFFile() {
+        let file = "import A\r\n\r\nstruct Row {\r\n    var body: some View {\r\n        Text(\"x\")\r\n    }\r\n}\r\n"
+        #expect(FileLocation.line(of: ["    var body: some View {", "        Text(\"x\")"], in: file) == 4)
+        let diff = ToolSummary.editDiff([
+            "file_path": "/r/a.swift", "old_string": "b\nold\nc", "new_string": "b\nnew1\nnew2\nc",
+        ])
+        #expect(diff.located(in: "a\r\na\r\na\r\nb\r\nnew1\r\nnew2\r\nc\r\nd\r\n")?.hunks.first?.newStart == 4)
+    }
+
     @Test func aTurnNoticeNamesTheFilesItsEditsWrote() throws {
         let edit = JSONValue.object([
             "file_path": .string("/r/Sources/a.swift"), "old_string": .string("a"), "new_string": .string("b"),
