@@ -45,6 +45,21 @@ struct ImageAttachmentTests {
         #expect(data.count <= ImageAttachment.maxBytes)
     }
 
+    /// GD48: a small file passed through at any pixel size; the API rejects a side over 8000 px.
+    @Test("a small PNG wider or taller than 8000 px is scaled down too")
+    func tallButSmall() throws {
+        for (width, height) in [(9000, 600), (600, 12000)] {
+            let data = Self.image(.png, width: width, height: height)
+            #expect(data.count <= ImageAttachment.maxBytes, "small enough to have passed through")
+            let attached = try #require(ImageAttachment.make(data: data, name: "shot.png"))
+            let out = try #require(Data(base64Encoded: attached.image.base64))
+            let source = try #require(CGImageSourceCreateWithData(out as CFData, nil))
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            let sides = [kCGImagePropertyPixelWidth, kCGImagePropertyPixelHeight].compactMap { properties?[$0] as? Int }
+            #expect(sides.count == 2 && sides.allSatisfy { $0 <= ImageAttachment.maxSide }, "\(width)×\(height) → \(sides)")
+        }
+    }
+
     @Test("⌘V attaches image data with no text; text on the pasteboard pastes as text")
     func paste() async throws {
         let live = LiveThread(

@@ -30,16 +30,22 @@ struct ImageAttachment: Identifiable, Equatable, Sendable {
     }
     /// Claude takes at most 5 MB of base64 per image (3.75 MB raw); the others take less or the same.
     static let maxBytes = 3_750_000
+    /// Anthropic's vision API rejects an image with a side over this, whatever its file size (GD48).
+    static let maxSide = 8000
     /// Longer sides are scaled down to this before re-encoding; models downscale past ~1.5k anyway.
     static let maxPixels = 2048
 
-    /// `data` as an attachment: sent as it is when it's PNG, JPEG, GIF or WebP and small enough, otherwise
+    /// `data` as an attachment: sent as it is when it's PNG, JPEG, GIF or WebP and small enough in bytes and pixels, otherwise
     /// (TIFF from the pasteboard, HEIC, a huge screenshot) scaled and re-encoded as PNG, or JPEG when PNG is too
     /// big. Nil when it isn't an image. Runs off the main thread (ImageIO is thread-safe).
     static func make(data: Data, name: String) -> ImageAttachment? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil), let type = CGImageSourceGetType(source)
         else { return nil }
-        if let mediaType = wireTypes[type as String], data.count <= maxBytes {
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let sides = [kCGImagePropertyPixelWidth, kCGImagePropertyPixelHeight].compactMap { properties?[$0] as? Int }
+        if let mediaType = wireTypes[type as String], data.count <= maxBytes, sides.count == 2,
+            sides.allSatisfy({ $0 <= maxSide })
+        {
             return ImageAttachment(name: name, image: EngineImage(mediaType: mediaType, base64: data.base64EncodedString()))
         }
         let options: [CFString: Any] = [
