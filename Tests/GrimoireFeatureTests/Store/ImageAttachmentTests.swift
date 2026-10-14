@@ -62,6 +62,35 @@ struct ImageAttachmentTests {
         #expect(live.attachments.map(\.name) == ["Pasted image.png"])
     }
 
+    /// GD47: SVG conforms to `.image` but ImageIO can't read it; a dropped `.txt` was accepted. Both vanished.
+    @Test("the panel and ⌘V offer only images that attach; anything else dropped says why instead of vanishing")
+    func unsupported() async throws {
+        #expect(!ImageAttachment.attachableTypes.contains { UTType.svg.conforms(to: $0) })
+        for type in [UTType.png, .jpeg, .heic, .tiff, .gif] {
+            #expect(ImageAttachment.attachableTypes.contains { type.conforms(to: $0) }, "\(type)")
+        }
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: URL(fileURLWithPath: "/repo")),
+            makeEngine: { FakeEngine() })
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-attach-\(UUID())")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let svg = dir.appendingPathComponent("logo.svg")
+        try #"<svg xmlns="http://www.w3.org/2000/svg"/>"#.write(to: svg, atomically: true, encoding: .utf8)
+        let board = NSPasteboard(name: NSPasteboard.Name("grimoire-test-\(UUID())"))
+        defer { board.releaseGlobally() }
+        board.clearContents()
+        board.writeObjects([svg as NSURL])
+        #expect(!Attach.paste(board, into: live), "⌘V doesn't take an SVG it can't attach")
+
+        let notes = dir.appendingPathComponent("notes.txt")
+        try "hello".write(to: notes, atomically: true, encoding: .utf8)
+        #expect(Attach.drop([try #require(NSItemProvider(contentsOf: notes))], into: live))
+        for _ in 0..<200 where live.attachProblem == nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(live.attachments.isEmpty)
+        #expect(live.attachProblem?.contains("notes.txt") == true)
+    }
+
     @Test("images go with the message to the agent")
     func send() {
         let engine = FakeEngine()

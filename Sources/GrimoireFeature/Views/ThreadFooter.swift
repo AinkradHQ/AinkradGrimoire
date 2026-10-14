@@ -10,6 +10,7 @@ struct ThreadFooter: View {
     var harness: Harness = .claude
     @Environment(\.ainkradSkin) private var skin
     @Environment(\.ainkradReduceMotion) private var reduceMotion
+    @Environment(\.ainkradToastCenter) private var toasts
 
     private var draft: String { live.draft }
     private var isBusy: Bool { live.canInterrupt && live.pendingApproval == nil }
@@ -75,6 +76,12 @@ struct ThreadFooter: View {
         // Start the agent as soon as there is something to say, so `/` lists
         // the CLI's own commands by the time you look.
         .onChange(of: live.draft) { _, text in if !text.isEmpty { live.ensureStarted() } }
+        // A file that couldn't be attached says so once (GD47).
+        .onChange(of: live.attachProblem) { _, problem in
+            guard let problem else { return }
+            toasts.show(problem, status: .warning)
+            live.attachProblem = nil
+        }
         .animation(reduceMotion ? nil : skin.animation(skin.motion.present), value: limit)
     }
 

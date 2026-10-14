@@ -13,6 +13,21 @@ struct ImageAttachment: Identifiable, Equatable, Sendable {
         UTType.png.identifier: "image/png", UTType.jpeg.identifier: "image/jpeg", UTType.gif.identifier: "image/gif",
         UTType.webP.identifier: "image/webp",
     ]
+    /// The images `make` can attach: the types ImageIO reads. SVG is an image to UTType but not to ImageIO (GD47).
+    static let attachableTypes: [UTType] = ((CGImageSourceCopyTypeIdentifiers() as? [String]) ?? [])
+        .compactMap { UTType($0) }
+        .filter { $0.conforms(to: .image) && !$0.conforms(to: .svg) }
+
+    /// Whether the file at `url` is an image `make` can attach, by its extension.
+    static func canAttach(_ url: URL) -> Bool {
+        guard let type = UTType(filenameExtension: url.pathExtension) else { return false }
+        return attachableTypes.contains { type.conforms(to: $0) }
+    }
+
+    /// What the composer says when `name` couldn't be attached.
+    static func problem(_ name: String) -> String {
+        "“\(name)” can’t be attached — only images can (PNG, JPEG, GIF, WebP, HEIC…)."
+    }
     /// Claude takes at most 5 MB of base64 per image (3.75 MB raw); the others take less or the same.
     static let maxBytes = 3_750_000
     /// Longer sides are scaled down to this before re-encoding; models downscale past ~1.5k anyway.

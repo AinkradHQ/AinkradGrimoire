@@ -45,6 +45,8 @@ final class LiveThread {
     private(set) var sentImages: [Int: [String]] = [:]
     /// The images that went with the last message, so one nothing answered gets them back (GD30).
     private var lastSentImages: [ImageAttachment] = []
+    /// Why the last file dropped or picked wasn't attached, for the composer to say once (GD47).
+    var attachProblem: String?
     /// Review comments on lines of the agent's changes, sent ahead of the next message.
     var reviewComments: [ReviewComment] = []
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
