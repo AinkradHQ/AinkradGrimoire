@@ -88,6 +88,11 @@ enum Snapshot {
     ) {
         let (window, hosting) = host(view, size: size)
         defer { window.close() }
+        assertMatches(hosted: hosting, named: name, file: file, line: line)
+    }
+
+    /// Checks a view already hosted (and put in the state to shoot) against `Goldens/<name>.png`.
+    static func assertMatches(hosted hosting: NSView, named name: String, file: StaticString = #filePath, line: UInt = #line) {
         guard let image = capture(hosting), let png = pngData(image) else {
             return XCTFail("\(name) did not render", file: file, line: line)
         }
