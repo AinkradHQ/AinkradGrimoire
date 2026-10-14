@@ -67,4 +67,23 @@ final class ForgeLinkSnapshotTests: XCTestCase {
             },
             named: "forge-ask-inline", size: CGSize(width: 1100, height: 560))
     }
+
+    /// GD39: a newer ⌘I kept by the confirm's Cancel waits behind the edited ask: "1 more request from Forge".
+    func testNewerAskWaitsBehindTheEditedOne() throws {
+        let model = GrimoireModel(
+            settings: SettingsStore(documents: MemoryDocs()),
+            sessionsRoot: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-none-\(UUID())"))
+        let now = Date(timeIntervalSince1970: 1_791_700_000)
+        model.now = { now }
+        model.handleLaunch(#"{"kind":"askAgent","path":"/Users/me/Projects/Ainkrad","prompt":"Explain this"}"#)
+        model.forgeAsk?.request = "Explain this, briefly"
+        model.handleLaunch(#"{"kind":"askAgent","path":"/Users/me/Projects/Ainkrad","prompt":"And this"}"#)
+        model.keepEditingAsk()
+        Snapshot.assertMatches(
+            HStack(spacing: 0) {
+                Sidebar(model: model)
+                MainPane(model: model)
+            },
+            named: "forge-ask-queued", size: CGSize(width: 1100, height: 560))
+    }
 }

@@ -167,14 +167,16 @@ enum ReviewChanges {
         for line in text.components(separatedBy: "\n") {
             if line.hasPrefix("diff --git ") {
                 closeFile()
-                // `diff --git a/x b/x` — the b side, unless +++ names it later.
-                path = line.components(separatedBy: " b/").last
+                // `diff --git a/x b/x` — the b side, unless +++ names it later. A name git had to quote reads
+                // `"b/…"` (GD37).
+                path = line.range(of: " \"b/", options: .backwards).map { gitPath(String(line[$0.lowerBound...])) }
+                    ?? line.components(separatedBy: " b/").last
             } else if header == nil, line.hasPrefix("new file mode") {
                 status = .added
             } else if header == nil, line.hasPrefix("deleted file mode") {
                 status = .deleted
-            } else if header == nil, line.hasPrefix("+++ b/") {
-                path = String(line.dropFirst(6))
+            } else if header == nil, line.hasPrefix("+++ b/") || line.hasPrefix("+++ \"b/") {
+                path = gitPath(String(line.dropFirst(4)))
             } else if header == nil, line.hasPrefix("Binary files") {
                 binary = true
             } else if line.hasPrefix("@@"), let parsed = hunkHeader(line) {
@@ -222,11 +224,57 @@ enum ReviewChanges {
         return (old.0, old.1, new.0, new.1)
     }
 
-    /// `git status --porcelain` → untracked paths (`?? path`).
+    /// `git status --porcelain=v1 -z` → untracked paths (`?? path`). `-z` names every path raw, NUL-ended
+    /// (GD37); a rename's or copy's entry is followed by its source path, which is skipped.
     static func untracked(fromPorcelain text: String) -> [String] {
-        text.split(separator: "\n").compactMap { line in
-            line.hasPrefix("?? ") ? String(line.dropFirst(3)) : nil
+        var paths: [String] = []
+        var skipNext = false
+        for entry in text.split(separator: "\0", omittingEmptySubsequences: false) {
+            if skipNext {
+                skipNext = false
+            } else if entry.hasPrefix("?? ") {
+                paths.append(String(entry.dropFirst(3)))
+            } else if entry.first == "R" || entry.first == "C" {
+                skipNext = true
+            }
         }
+        return paths
+    }
+
+    /// A path from a diff header (`b/x`, or `"b/x"` when git C-quoted it), without its side prefix or the tab git
+    /// puts after a name with a space (GD37).
+    static func gitPath(_ field: String) -> String {
+        var field = field.hasSuffix("\t") ? String(field.dropLast()) : field
+        if field.hasPrefix("\""), field.hasSuffix("\""), field.count >= 2 {
+            var bytes: [UInt8] = []
+            var scalars = Array(field.utf8.dropFirst().dropLast())[...]
+            while let byte = scalars.popFirst() {
+                guard byte == UInt8(ascii: "\\"), let next = scalars.popFirst() else {
+                    bytes.append(byte)
+                    continue
+                }
+                switch next {
+                case UInt8(ascii: "0")...UInt8(ascii: "7"):
+                    var value = Int(next - UInt8(ascii: "0"))
+                    for _ in 0..<2 {
+                        guard let digit = scalars.first, (UInt8(ascii: "0")...UInt8(ascii: "7")).contains(digit) else { break }
+                        value = value * 8 + Int(digit - UInt8(ascii: "0"))
+                        scalars.removeFirst()
+                    }
+                    bytes.append(UInt8(truncatingIfNeeded: value))
+                case UInt8(ascii: "a"): bytes.append(7)
+                case UInt8(ascii: "b"): bytes.append(8)
+                case UInt8(ascii: "t"): bytes.append(9)
+                case UInt8(ascii: "n"): bytes.append(10)
+                case UInt8(ascii: "v"): bytes.append(11)
+                case UInt8(ascii: "f"): bytes.append(12)
+                case UInt8(ascii: "r"): bytes.append(13)
+                default: bytes.append(next)
+                }
+            }
+            field = String(decoding: bytes, as: UTF8.self)
+        }
+        return field.hasPrefix("a/") || field.hasPrefix("b/") ? String(field.dropFirst(2)) : field
     }
 
     /// Queued review comments as one message to the agent — each place (`file:line`), the line quoted, the

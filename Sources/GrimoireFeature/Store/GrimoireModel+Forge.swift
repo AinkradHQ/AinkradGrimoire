@@ -73,13 +73,29 @@ extension GrimoireModel {
         forgeAsk = nil
     }
 
-    /// The confirm's Cancel: the set-aside ask comes back to the main pane, in place of what replaced it.
+    /// The confirm's Cancel: the set-aside ask comes back to the main pane. A newer ask that replaced it waits in
+    /// line behind it — "1 more request from Forge" — rather than being dropped unseen (GD39).
     func keepEditingAsk() {
         guard let ask = setAsideForgeAsk else { return }
-        setAsideForgeAsk = nil
+        let newer = forgeAsk
         isShowingSettings = false
         selectedThreadID = nil
+        setAsideForgeAsk = nil
+        if let newer { queuedForgeAsks.append(newer) }
         forgeAsk = ask
+    }
+
+    /// "N more requests from Forge" (the ask's header, or the strip over a thread): the next waiting ask takes the
+    /// main pane. An unedited current one waits in line in its place; an edited one asks first, and Cancel puts the
+    /// next back in line. Waiting asks outlive opening a thread, so none is dropped unseen (GD39).
+    func showNextForgeAsk() {
+        guard !queuedForgeAsks.isEmpty else { return }
+        let next = queuedForgeAsks.removeFirst()
+        if let current = forgeAsk, !current.isEdited { queuedForgeAsks.append(current) }
+        setAsideAsk()
+        isShowingSettings = false
+        selectedThreadID = nil
+        forgeAsk = next
     }
 
     /// Selects `thread` and sends `text` to it once it is open.

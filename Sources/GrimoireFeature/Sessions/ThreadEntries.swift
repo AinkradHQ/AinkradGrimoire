@@ -124,7 +124,7 @@ enum ToolSummary {
     static func result(name: String, input: JSONValue, output: ToolOutput?) -> String {
         guard let output else { return "running…" }
         if output.isError {
-            return output.content.split(separator: "\n").first.map { String($0.prefix(60)) } ?? "failed"
+            return lines(output.content).first { !$0.isEmpty }.map { String($0.prefix(60)) } ?? "failed"
         }
         switch name {
         case "Edit", "MultiEdit":
@@ -139,10 +139,10 @@ enum ToolSummary {
             let lines = lineCount(input["content"]?.stringValue ?? "")
             return lines == 1 ? "1 line" : "\(lines) lines"
         case "Grep":
-            let matches = output.content.split(separator: "\n").count
+            let matches = lines(output.content).filter { !$0.isEmpty }.count
             return matches == 1 ? "1 match" : "\(matches) matches"
         case "Glob":
-            let files = output.content.split(separator: "\n").count
+            let files = lines(output.content).filter { !$0.isEmpty }.count
             return files == 1 ? "1 file" : "\(files) files"
         case "Read", "Bash":
             let lines = lineCount(output.content)
@@ -186,9 +186,13 @@ enum ToolSummary {
     }
 
     /// `text` split into lines; the newline that ends the last line (nearly all
-    /// output has one) does not start another, empty one (GD18).
+    /// output has one) does not start another, empty one (GD18). A CRLF ends a line
+    /// too ("\r\n" is one Character, so splitting on "\n" missed it — GD38), and a
+    /// lone CR redraws its line, as a terminal does: a progress line shows its last state.
     static func lines(_ text: String) -> [Substring] {
-        let body = text.hasSuffix("\n") ? text.dropLast() : Substring(text)
-        return text.isEmpty ? [] : body.split(separator: "\n", omittingEmptySubsequences: false)
+        guard let last = text.last else { return [] }
+        let body = last == "\n" || last == "\r\n" ? text.dropLast() : Substring(text)
+        return body.split(omittingEmptySubsequences: false) { $0 == "\n" || $0 == "\r\n" }
+            .map { $0.split(separator: "\r").last ?? $0 }
     }
 }

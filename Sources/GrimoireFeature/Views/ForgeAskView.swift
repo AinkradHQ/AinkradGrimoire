@@ -87,6 +87,15 @@ struct ForgeAskView: View {
                 .lineLimit(1)
             }
             Spacer(minLength: skin.size.s8)
+            // A newer ⌘I kept by the confirm's Cancel waits here, one click away (GD39).
+            if !model.queuedForgeAsks.isEmpty {
+                let count = model.queuedForgeAsks.count
+                AinkradButton(
+                    title: "\(count) more request\(count == 1 ? "" : "s") from Forge", style: .ghost,
+                    icon: "tray.full"
+                ) { model.showNextForgeAsk() }
+                .fixedSize()
+            }
             AinkradMenuButton(items: [AinkradMenuItem(title: "Discard", systemName: "trash") { discard() }]) {
                 IconMenuLabel(systemName: "ellipsis", size: skin.size.s30)
             }
@@ -207,13 +216,18 @@ struct ForgeAskView: View {
             && FileManager.default.fileExists(atPath: (project as NSString).appendingPathComponent(".git"))
         let (project, prompt, harness, mode) = (project, context.map { $0.message(request) } ?? request, harness, mode)
         let agentModel = harness == .claude ? agentModel : otherModel
-        // Sent, not set aside: the ask goes before the new thread is selected (its edits are read above).
+        // Sent, not set aside: the ask goes before the new thread is selected (its edits are read above). The new
+        // thread stays in front; Forge's waiting requests show in the strip over it (GD39).
         model.forgeAsk = nil
         model.startThread(
             project: project, prompt: prompt, model: agentModel, mode: mode, worktree: worktree, harness: harness)
     }
 
-    private func discard() { model.forgeAsk = nil }
+    /// Discarded, the next waiting request (if any) comes up in its place.
+    private func discard() {
+        model.forgeAsk = nil
+        model.showNextForgeAsk()
+    }
 }
 
 /// Forge's selection as mockup 11 B's chip: a cyan-rimmed chip with the file's ◆, its mono name, the range, and ↗ (back

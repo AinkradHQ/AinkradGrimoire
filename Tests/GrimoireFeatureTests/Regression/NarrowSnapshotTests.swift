@@ -122,6 +122,22 @@ final class NarrowSnapshotTests: XCTestCase {
         XCTAssertTrue(model.othersNeedingYou.isEmpty, "the open thread is not 'other'")
     }
 
+    /// GD39: after Send the new thread stays in front; a request from Forge still waiting shows in a slim strip.
+    func testWaitingForgeRequestOverTheSentThread() throws {
+        let model = makeModel()
+        let turn = try FixtureReplay.turn(.claude)
+        model.startThread(project: "/tmp/work", prompt: turn.prompt, model: nil, mode: .ask, worktree: false)
+        let live = try XCTUnwrap(model.current)
+        live.onSessionID = nil
+        FixtureReplay.play(turn.steps, into: live)
+        model.queuedForgeAsks = [ForgeAsk(project: "/tmp/work", prompt: "Explain this")]
+        assertWindow(model, named: "forge-queue-strip", width: 1100)
+        let thread = model.selectedThreadID
+        model.showNextForgeAsk()
+        XCTAssertEqual(model.forgeAsk?.prompt, "Explain this")
+        XCTAssertNotEqual(model.selectedThreadID, thread)
+    }
+
     // MARK: - Fixtures
 
     private func assertWindow(_ model: GrimoireModel, named name: String, width: CGFloat) {

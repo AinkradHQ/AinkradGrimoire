@@ -60,7 +60,7 @@ final class ReviewModel {
             defer { isLoading = false }
             do {
                 let diff = try await git.run(["diff", "HEAD", "--no-color", "--no-ext-diff"])
-                let status = try await git.run(["status", "--porcelain"])
+                let status = try await git.run(["status", "--porcelain=v1", "-z"])
                 files =
                     ReviewChanges.parseUnifiedDiff(diff)
                     + ReviewChanges.untracked(fromPorcelain: status).map {
