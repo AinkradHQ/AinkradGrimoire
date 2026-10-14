@@ -58,5 +58,42 @@ struct AskLaunchTests {
         model.keepEditingAsk()  // the dialog closing afterwards changes nothing
         #expect(model.forgeAsk?.prompt == "Second")
     }
-}
 
+    @Test("GD39: Cancel keeps the edited ask and the newer one, which waits behind it and is never dropped unseen")
+    func cancelKeepsBoth() {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-ask-\(UUID().uuidString.prefix(8))")
+        let model = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+        model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"First"}"#)
+        model.forgeAsk?.request = "First, edited"
+        model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"Second"}"#)
+        model.keepEditingAsk()  // the confirm's Cancel
+        #expect(model.forgeAsk?.request == "First, edited")
+        #expect(model.queuedForgeAsks.map(\.prompt) == ["Second"])
+
+        // "1 more request from Forge": the edited ask asks first; Cancel puts the newer one back in line.
+        model.showNextForgeAsk()
+        #expect(model.forgeAsk?.prompt == "Second")
+        #expect(model.setAsideForgeAsk?.request == "First, edited")
+        model.keepEditingAsk()
+        #expect(model.forgeAsk?.request == "First, edited")
+        #expect(model.queuedForgeAsks.map(\.prompt) == ["Second"])
+
+        // Done with this one (sent or discarded): the next comes up.
+        model.forgeAsk = nil
+        model.showQueuedAsk(model.queuedForgeAsks)
+        #expect(model.forgeAsk?.prompt == "Second")
+        #expect(model.queuedForgeAsks.isEmpty && model.selectedThreadID == nil)
+
+        // An unedited ask switched away from waits in line too.
+        model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"Third"}"#)
+        #expect(model.forgeAsk?.prompt == "Third")
+        model.queuedForgeAsks = [ForgeAsk(project: "/p", prompt: "Fourth")]
+        model.showNextForgeAsk()
+        #expect(model.forgeAsk?.prompt == "Fourth")
+        #expect(model.queuedForgeAsks.map(\.prompt) == ["Third"])
+
+        // Opening a thread lets unedited asks go, as it always has (GD31).
+        model.selectedThreadID = "s1"
+        #expect(model.forgeAsk == nil && model.queuedForgeAsks.isEmpty)
+    }
+}

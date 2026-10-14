@@ -47,7 +47,7 @@ final class GrimoireModel {
         didSet {
             guard selectedThreadID != oldValue else { return }
             isShowingSettings = false
-            setAsideAsk()
+            leaveAsksForThread()
             loadSelectedThread()
         }
     }
@@ -69,6 +69,7 @@ final class GrimoireModel {
     var forgeAsk: ForgeAsk?
     /// An edited ask that opening a thread or a newer ask set aside, until you confirm discarding it (GD31).
     var setAsideForgeAsk: ForgeAsk?
+    var queuedForgeAsks: [ForgeAsk] = []  // newer unedited asks the confirm's Cancel kept, next in line (GD39)
     /// The review pane beside the conversation; stays open across threads.
     var isReviewOpen = false
     private var reviews: [String: ReviewModel] = [:]

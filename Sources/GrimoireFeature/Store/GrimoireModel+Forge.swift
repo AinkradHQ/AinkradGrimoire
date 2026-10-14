@@ -73,13 +73,47 @@ extension GrimoireModel {
         forgeAsk = nil
     }
 
-    /// The confirm's Cancel: the set-aside ask comes back to the main pane, in place of what replaced it.
+    /// The confirm's Cancel: the set-aside ask comes back to the main pane. A newer ask that replaced it waits in
+    /// line behind it — "1 more request from Forge" — rather than being dropped unseen (GD39).
     func keepEditingAsk() {
         guard let ask = setAsideForgeAsk else { return }
-        setAsideForgeAsk = nil
+        let newer = forgeAsk
         isShowingSettings = false
         selectedThreadID = nil
+        setAsideForgeAsk = nil
+        if let newer { queuedForgeAsks.append(newer) }
         forgeAsk = ask
+    }
+
+    /// The confirm's Discard. Discarded for a thread, the waiting asks go too, as an unedited ask does (GD31).
+    func discardSetAsideAsk() {
+        setAsideForgeAsk = nil
+        if forgeAsk == nil { queuedForgeAsks = [] }
+    }
+
+    /// Opening a thread takes the ask out of the main pane, and the unedited ones waiting with it — unless the
+    /// edited ask's confirm is up, whose Cancel brings them all back.
+    func leaveAsksForThread() {
+        setAsideAsk()
+        if selectedThreadID != nil, setAsideForgeAsk == nil { queuedForgeAsks = [] }
+    }
+
+    /// "N more requests from Forge": the next waiting ask takes the pane. An unedited current one waits in line in
+    /// its place; an edited one asks first, and Cancel puts the next back in line (GD39).
+    func showNextForgeAsk() {
+        guard !queuedForgeAsks.isEmpty else { return }
+        let next = queuedForgeAsks.removeFirst()
+        if let current = forgeAsk, !current.isEdited { queuedForgeAsks.append(current) }
+        setAsideAsk()
+        forgeAsk = next
+    }
+
+    /// After an ask is sent or discarded, the first of `queued` (read before sending opened its thread) comes up.
+    func showQueuedAsk(_ queued: [ForgeAsk]) {
+        guard let next = queued.first else { return }
+        selectedThreadID = nil
+        queuedForgeAsks = Array(queued.dropFirst())
+        forgeAsk = next
     }
 
     /// Selects `thread` and sends `text` to it once it is open.
