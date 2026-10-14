@@ -60,6 +60,11 @@ extension GrimoireModel {
         }
         if !projects.contains(where: { $0.path == ask.path }) { openFolder(URL(fileURLWithPath: ask.path)) }
         let context = ask.context
+        // With the discard confirm up, the ask behind it is a newer one waiting too: it goes in line, not away (GD43).
+        if setAsideForgeAsk != nil, let waiting = forgeAsk {
+            queuedForgeAsks.append(waiting)
+            forgeAsk = nil
+        }
         isComposingNewThread = false
         isShowingSettings = false
         selectedThreadID = nil  // sets aside any earlier ask, so set it first
