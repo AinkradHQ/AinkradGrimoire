@@ -78,9 +78,12 @@ struct AskLaunchTests {
         #expect(model.forgeAsk?.request == "First, edited")
         #expect(model.queuedForgeAsks.map(\.prompt) == ["Second"])
 
-        // Done with this one (sent or discarded): the next comes up.
+        // Sent: the new thread stays in front and the newer request keeps waiting, for the strip's Open.
         model.forgeAsk = nil
-        model.showQueuedAsk(model.queuedForgeAsks)
+        model.selectedThreadID = "sent"
+        #expect(model.forgeAsk == nil && model.selectedThreadID == "sent")
+        #expect(model.queuedForgeAsks.map(\.prompt) == ["Second"])
+        model.showNextForgeAsk()
         #expect(model.forgeAsk?.prompt == "Second")
         #expect(model.queuedForgeAsks.isEmpty && model.selectedThreadID == nil)
 
@@ -92,8 +95,8 @@ struct AskLaunchTests {
         #expect(model.forgeAsk?.prompt == "Fourth")
         #expect(model.queuedForgeAsks.map(\.prompt) == ["Third"])
 
-        // Opening a thread lets unedited asks go, as it always has (GD31).
+        // Opening a thread lets the unedited ask on screen go, as it always has (GD31); the waiting ones stay.
         model.selectedThreadID = "s1"
-        #expect(model.forgeAsk == nil && model.queuedForgeAsks.isEmpty)
+        #expect(model.forgeAsk == nil && model.queuedForgeAsks.map(\.prompt) == ["Third"])
     }
 }

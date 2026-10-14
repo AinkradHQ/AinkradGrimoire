@@ -29,7 +29,7 @@ struct RootView: View {
             title: "Discard the request from Forge?",
             message: "You edited it and haven't sent it. Cancel takes you back to it.",
             confirmTitle: "Discard", isDestructive: true
-        ) { model.discardSetAsideAsk() }
+        ) { model.setAsideForgeAsk = nil }
         .ainkradToastHost()
         .ainkradHostTheme(theme)
         .task {

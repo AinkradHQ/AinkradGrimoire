@@ -46,6 +46,10 @@ struct Columns: View {
                 if !layout.showsSidebar, !model.othersNeedingYou.isEmpty {
                     NeedsYouStrip(model: model, threads: model.othersNeedingYou)
                 }
+                // Forge's requests kept by the confirm's Cancel, waiting behind a sent one (GD39).
+                if model.forgeAsk == nil, !model.isShowingSettings, !model.queuedForgeAsks.isEmpty {
+                    ForgeQueueStrip(model: model)
+                }
                 MainPane(model: model)
             }
         }
@@ -87,6 +91,31 @@ struct NeedsYouStrip: View {
             AinkradButton(title: "Open", style: .ghost) { model.selectedThreadID = threads.first?.id }
                 .borderless().secondaryAccent().fixedSize()
                 .help(threads.first.map { "Open \($0.title)" } ?? "")
+        }
+        .font(skin.font(AinkradFontToken(sizeKey: "t12")))
+        .padding(.horizontal, skin.size.s20)
+        .padding(.top, skin.size.s8)
+    }
+}
+
+/// Over the main pane while Forge's requests wait (GD39): NeedsYouStrip's slim row, ⚒ and the count, Open shows the
+/// next one.
+struct ForgeQueueStrip: View {
+    let model: GrimoireModel
+    @Environment(\.ainkradSkin) private var skin
+    @Environment(\.ainkradTheme) private var theme
+
+    var body: some View {
+        let count = model.queuedForgeAsks.count
+        HStack(spacing: skin.size.s8) {
+            Text("⚒").foregroundStyle(theme.accentSecondary.opacity(skin.opacity.o80))
+            Text("\(count) more request\(count == 1 ? "" : "s") from Forge")
+                .foregroundStyle(theme.foreground.opacity(skin.opacity.o85))
+                .lineLimit(1)
+            Spacer(minLength: skin.size.s6)
+            AinkradButton(title: "Open", style: .ghost) { model.showNextForgeAsk() }
+                .borderless().secondaryAccent().fixedSize()
+                .help("Open the next request from Forge")
         }
         .font(skin.font(AinkradFontToken(sizeKey: "t12")))
         .padding(.horizontal, skin.size.s20)

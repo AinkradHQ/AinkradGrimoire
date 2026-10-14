@@ -47,7 +47,7 @@ final class GrimoireModel {
         didSet {
             guard selectedThreadID != oldValue else { return }
             isShowingSettings = false
-            leaveAsksForThread()
+            setAsideAsk()
             loadSelectedThread()
         }
     }

@@ -85,34 +85,16 @@ extension GrimoireModel {
         forgeAsk = ask
     }
 
-    /// The confirm's Discard. Discarded for a thread, the waiting asks go too, as an unedited ask does (GD31).
-    func discardSetAsideAsk() {
-        setAsideForgeAsk = nil
-        if forgeAsk == nil { queuedForgeAsks = [] }
-    }
-
-    /// Opening a thread takes the ask out of the main pane, and the unedited ones waiting with it — unless the
-    /// edited ask's confirm is up, whose Cancel brings them all back.
-    func leaveAsksForThread() {
-        setAsideAsk()
-        if selectedThreadID != nil, setAsideForgeAsk == nil { queuedForgeAsks = [] }
-    }
-
-    /// "N more requests from Forge": the next waiting ask takes the pane. An unedited current one waits in line in
-    /// its place; an edited one asks first, and Cancel puts the next back in line (GD39).
+    /// "N more requests from Forge" (the ask's header, or the strip over a thread): the next waiting ask takes the
+    /// main pane. An unedited current one waits in line in its place; an edited one asks first, and Cancel puts the
+    /// next back in line. Waiting asks outlive opening a thread, so none is dropped unseen (GD39).
     func showNextForgeAsk() {
         guard !queuedForgeAsks.isEmpty else { return }
         let next = queuedForgeAsks.removeFirst()
         if let current = forgeAsk, !current.isEdited { queuedForgeAsks.append(current) }
         setAsideAsk()
-        forgeAsk = next
-    }
-
-    /// After an ask is sent or discarded, the first of `queued` (read before sending opened its thread) comes up.
-    func showQueuedAsk(_ queued: [ForgeAsk]) {
-        guard let next = queued.first else { return }
+        isShowingSettings = false
         selectedThreadID = nil
-        queuedForgeAsks = Array(queued.dropFirst())
         forgeAsk = next
     }
 
