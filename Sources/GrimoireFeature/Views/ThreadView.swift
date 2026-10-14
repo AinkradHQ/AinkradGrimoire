@@ -141,45 +141,7 @@ struct ThreadView: View {
     }
 }
 
-private struct ConversationView<Trailer: View>: View {
-    let live: LiveThread
-    let workingDirectory: String
-    /// What the engine is doing (starting, failed), under the last message.
-    @ViewBuilder let trailer: Trailer
-    @Environment(\.ainkradSkin) private var skin
-
-    var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: skin.size.s14) {
-                    ForEach(Array(live.entries.enumerated()), id: \.offset) { index, entry in
-                        EntryRow(
-                            entry: entry, images: live.sentImages[index] ?? [], workingDirectory: workingDirectory,
-                            waitingToolID: live.pendingApproval?.toolUseID
-                        ).id(index)
-                    }
-                    trailer.id("trailer")
-                }
-                .padding(.horizontal, skin.size.s20)
-                .padding(.top, skin.size.s8)
-                .padding(.bottom, skin.size.s20)
-            }
-            // Opens at the newest message without jumping there before the rows
-            // above are laid out (which left a blank gap at the top).
-            .defaultScrollAnchor(.bottom)
-            .onChange(of: live.entries.count) { scrollToNewest(proxy) }
-            .onChange(of: live.entries.last) { scrollToNewest(proxy) }
-            .onChange(of: live.failure) { proxy.scrollTo("trailer", anchor: .bottom) }
-        }
-    }
-
-    private func scrollToNewest(_ proxy: ScrollViewProxy) {
-        guard !live.entries.isEmpty else { return }
-        proxy.scrollTo(live.entries.count - 1, anchor: .bottom)
-    }
-}
-
-private struct EntryRow: View {
+struct EntryRow: View {
     let entry: ThreadEntry
     /// The images sent with a message, by name.
     let images: [String]

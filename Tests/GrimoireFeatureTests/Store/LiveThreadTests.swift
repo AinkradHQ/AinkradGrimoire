@@ -48,6 +48,40 @@ struct LiveThreadTests {
         return (live, engine)
     }
 
+    @Test("GD45: an agent gone mid-turn with code 0 (OpenCode's server died) gets the failure card, Retry and the message back")
+    func cleanExitMidTurn() {
+        let (live, engine) = make()
+        live.send("Run the tests")
+        live.apply(.exited(code: 0))
+        #expect(live.failure?.code == 0)
+        #expect(live.failure?.restoredDraft == true)
+        #expect(live.draft == "Run the tests")
+        #expect(live.entries.isEmpty, "the unanswered message moves back to the composer")
+        live.retry()
+        #expect(engine.sent == ["Run the tests", "Run the tests"])
+
+        // Between turns a clean exit is just the CLI ending: no card.
+        let (idle, _) = make()
+        idle.ensureStarted()
+        idle.apply(.exited(code: 0))
+        #expect(idle.failure == nil && idle.status == .idle)
+    }
+
+    @Test("GD46: a tool left running by a CLI that died reopens as interrupted, not live")
+    func danglingToolOnReopen() {
+        let (live, _) = make([
+            .user("Run the test suite"),
+            .tool(ToolCall(id: "t1", name: "Bash", input: ["command": "make test", "description": "Run the test suite"])),
+        ])
+        guard case .tool(let call) = live.entries.last else {
+            Issue.record("no tool card")
+            return
+        }
+        #expect(call.result == ToolOutput(content: "Interrupted — the agent exited", isError: true))
+        #expect(live.activity == nil, "nothing is running")
+        #expect(live.status == .idle && !live.isRunning)
+    }
+
     @Test("sending starts the agent once, resuming the stored session, and shows the message")
     func send() {
         let (live, engine) = make([.user("earlier")])

@@ -138,6 +138,28 @@ final class NarrowSnapshotTests: XCTestCase {
         XCTAssertNotEqual(model.selectedThreadID, thread)
     }
 
+    /// GD44: "N more requests from Forge" in the ask's header gives way at 520 rather than push the pane off both edges.
+    func testForgeAskWithAQueueAt520() {
+        let model = makeModel()
+        model.handleLaunch(#"{"kind":"askAgent","path":"/tmp/work","prompt":"Explain this"}"#)
+        model.forgeAsk?.request = "Explain this, briefly"
+        model.handleLaunch(#"{"kind":"askAgent","path":"/tmp/work","prompt":"And this"}"#)
+        model.handleLaunch(#"{"kind":"askAgent","path":"/tmp/work","prompt":"And that"}"#)
+        model.keepEditingAsk()
+        XCTAssertEqual(model.queuedForgeAsks.count, 2)
+        // The window's narrowest layout is the same with the button as without it (the pane's own floor, GD26).
+        func narrowest() -> CGFloat {
+            NSHostingController(rootView: Snapshot.styled(Columns(model: model)))
+                .sizeThatFits(in: CGSize(width: 520, height: 640)).width
+        }
+        let queued = narrowest()
+        let waiting = model.queuedForgeAsks
+        model.queuedForgeAsks = []
+        XCTAssertLessThanOrEqual(queued, narrowest(), "the queue button pushes the ask pane wider")
+        model.queuedForgeAsks = waiting
+        assertWindow(model, named: "narrow-forge-ask-queued-520", width: 520)
+    }
+
     // MARK: - Fixtures
 
     private func assertWindow(_ model: GrimoireModel, named name: String, width: CGFloat) {

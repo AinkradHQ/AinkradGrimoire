@@ -62,49 +62,71 @@ struct ForgeAskView: View {
         }
     }
 
-    /// "New thread", and where it will run: project · agent · from Forge ⌘I.
+    /// "New thread", and where it will run: project · agent · from Forge ⌘I. Waiting requests from Forge sit beside it,
+    /// or on a row of their own when that doesn't fit (GD44: `.fixedSize()` beside it pushed the pane off both edges).
     private var header: some View {
-        HStack(alignment: .top, spacing: skin.size.s10) {
-            VStack(alignment: .leading, spacing: skin.size.s4) {
-                Text("New thread")
-                    .font(skin.font(AinkradFontToken(sizeKey: "t15", weight: "semibold")))
-                    .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
-                // "Ainkrad · feat/glass-sidebar · [Claude] · from Forge ⌘I"; the badge picks the agent.
-                HStack(spacing: skin.size.s6) {
-                    Text((project as NSString).lastPathComponent)
-                    Text("·")
-                    if let branch = Self.branch(of: project) {
-                        Text(branch).font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
-                        Text("·")
-                    }
-                    agentMenu
-                    Text("· from")
-                    Text("Forge").fontWeight(.bold).foregroundStyle(theme.foreground)
-                    Text("⌘I")
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: skin.size.s10) {
+                title
+                Spacer(minLength: skin.size.s8)
+                queued
+                more
+            }
+            VStack(alignment: .leading, spacing: skin.size.s8) {
+                HStack(alignment: .top, spacing: skin.size.s10) {
+                    title
+                    Spacer(minLength: skin.size.s8)
+                    more
                 }
-                .font(skin.font(AinkradFontToken(sizeKey: "t11")))
-                .foregroundStyle(skin.color(skin.text.muted))
-                .lineLimit(1)
+                queued
             }
-            Spacer(minLength: skin.size.s8)
-            // A newer ⌘I kept by the confirm's Cancel waits here, one click away (GD39).
-            if !model.queuedForgeAsks.isEmpty {
-                let count = model.queuedForgeAsks.count
-                AinkradButton(
-                    title: "\(count) more request\(count == 1 ? "" : "s") from Forge", style: .ghost,
-                    icon: "tray.full"
-                ) { model.showNextForgeAsk() }
-                .fixedSize()
-            }
-            AinkradMenuButton(items: [AinkradMenuItem(title: "Discard", systemName: "trash") { discard() }]) {
-                IconMenuLabel(systemName: "ellipsis", size: skin.size.s30)
-            }
-            .fixedSize()
-            .help("More")
         }
         .padding(.horizontal, skin.size.s20)
         .padding(.top, skin.size.s14)
         .padding(.bottom, skin.size.s10)
+    }
+
+    private var title: some View {
+        VStack(alignment: .leading, spacing: skin.size.s4) {
+            Text("New thread")
+                .font(skin.font(AinkradFontToken(sizeKey: "t15", weight: "semibold")))
+                .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
+            // "Ainkrad · feat/glass-sidebar · [Claude] · from Forge ⌘I"; the badge picks the agent.
+            HStack(spacing: skin.size.s6) {
+                Text((project as NSString).lastPathComponent)
+                Text("·")
+                if let branch = Self.branch(of: project) {
+                    Text(branch).font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
+                    Text("·")
+                }
+                agentMenu
+                Text("· from")
+                Text("Forge").fontWeight(.bold).foregroundStyle(theme.foreground)
+                Text("⌘I")
+            }
+            .font(skin.font(AinkradFontToken(sizeKey: "t11")))
+            .foregroundStyle(skin.color(skin.text.muted))
+            .lineLimit(1)
+        }
+    }
+
+    /// A newer ⌘I kept by the confirm's Cancel waits here, one click away (GD39).
+    @ViewBuilder private var queued: some View {
+        if !model.queuedForgeAsks.isEmpty {
+            let count = model.queuedForgeAsks.count
+            AinkradButton(
+                title: "\(count) more request\(count == 1 ? "" : "s") from Forge", style: .ghost, icon: "tray.full"
+            ) { model.showNextForgeAsk() }
+            .fixedSize()
+        }
+    }
+
+    private var more: some View {
+        AinkradMenuButton(items: [AinkradMenuItem(title: "Discard", systemName: "trash") { discard() }]) {
+            IconMenuLabel(systemName: "ellipsis", size: skin.size.s30)
+        }
+        .fixedSize()
+        .help("More")
     }
 
     private var composer: some View {

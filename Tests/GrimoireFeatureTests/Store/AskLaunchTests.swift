@@ -99,4 +99,26 @@ struct AskLaunchTests {
         model.selectedThreadID = "s1"
         #expect(model.forgeAsk == nil && model.queuedForgeAsks.map(\.prompt) == ["Third"])
     }
+
+    @Test("GD43: a third ⌘I during the discard confirm queues the second request instead of dropping it")
+    func thirdAskDuringTheConfirm() {
+        func model() -> GrimoireModel {
+            let root = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-ask-\(UUID().uuidString.prefix(8))")
+            let model = GrimoireModel(settings: SettingsStore(documents: MemoryDocs()), sessionsRoot: root)
+            model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"First"}"#)
+            model.forgeAsk?.request = "First, edited"
+            model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"Second"}"#)
+            model.handleLaunch(#"{"kind":"askAgent","path":"/p","prompt":"Third"}"#)  // the confirm is still up
+            return model
+        }
+        let cancelled = model()
+        cancelled.keepEditingAsk()
+        #expect(cancelled.forgeAsk?.request == "First, edited")
+        #expect(cancelled.queuedForgeAsks.map(\.prompt) == ["Second", "Third"])
+
+        let discarded = model()
+        discarded.setAsideForgeAsk = nil  // the confirm's Discard
+        #expect(discarded.forgeAsk?.prompt == "Third")
+        #expect(discarded.queuedForgeAsks.map(\.prompt) == ["Second"])
+    }
 }

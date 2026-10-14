@@ -207,6 +207,38 @@ struct ReviewModelGitTests {
         #expect(
             try await git.run(["log", "-1", "--format=%s"]).trimmingCharacters(in: .whitespacesAndNewlines) == "add b")
     }
+
+    /// GD42: a staged rename listed only its new path, with no hunks, and Commit left the old path's deletion staged.
+    @Test("a staged rename lists both paths, and Commit commits the delete too")
+    func rename() async throws {
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-rename-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let environment = CLILocator.loginEnvironment()
+        let git = Git(directory: repo.path, environment: environment)
+        _ = try await git.run(["init", "-q"])
+        _ = try await git.run(["config", "user.email", "t@t"])
+        _ = try await git.run(["config", "user.name", "t"])
+        try "let a = 1\n".write(to: repo.appendingPathComponent("Old.swift"), atomically: true, encoding: .utf8)
+        _ = try await git.run(["add", "Old.swift"])
+        _ = try await git.run(["commit", "-q", "-m", "old"])
+        _ = try await git.run(["mv", "Old.swift", "New.swift"])
+
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: repo), makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        review.scope = .uncommitted
+        await review.load()
+        #expect(review.files.map(\.path) == ["New.swift"])
+        #expect(review.files.map(\.status) == [.renamed])
+        #expect(review.files.map(\.oldPath) == ["Old.swift"])
+
+        review.commitMessage = "rename"
+        await review.commit()
+        #expect(review.error == nil, "\(review.error ?? "")")
+        #expect(try await git.run(["status", "--porcelain"]).isEmpty)
+        #expect(try await git.run(["ls-tree", "--name-only", "HEAD"]) == "New.swift\n")
+    }
 }
 
 @MainActor

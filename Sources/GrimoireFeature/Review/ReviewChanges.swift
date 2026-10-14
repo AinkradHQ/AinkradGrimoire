@@ -7,17 +7,22 @@ struct FileChange: Equatable, Identifiable, Sendable {
         case modified = "M"
         case added = "A"
         case deleted = "D"
+        case renamed = "R"
         case untracked = "?"
     }
 
     var path: String
     var status: Status
+    /// A rename's old path (`path` is the new one): it goes with the file to Commit and Revert (GD42).
+    var oldPath: String? = nil
     /// `nil` for binary files and untracked files (nothing to diff against).
     var diff: AinkradFileDiff?
     /// The hunks carry the file's own line numbers (git's diff, or an edit found in the file); an agent's edit
     /// that couldn't be found carries its snippet's.
     var hasFileLines = true
     var id: String { path }
+    /// Every path git must be given for this change: a rename's old one and its new one.
+    var paths: [String] { [oldPath, path].compactMap { $0 } }
 
     var added: Int { diff?.hunks.flatMap(\.lines).filter { $0.kind == .insertion }.count ?? 0 }
     var removed: Int { diff?.hunks.flatMap(\.lines).filter { $0.kind == .deletion }.count ?? 0 }
@@ -131,6 +136,7 @@ enum ReviewChanges {
     static func parseUnifiedDiff(_ text: String) -> [FileChange] {
         var changes: [FileChange] = []
         var path: String?
+        var oldPath: String?
         var status = FileChange.Status.modified
         var hunks: [AinkradDiffHunk] = []
         var lines: [AinkradDiffLine] = []
@@ -153,10 +159,11 @@ enum ReviewChanges {
             if let path {
                 changes.append(
                     FileChange(
-                        path: path, status: status,
+                        path: path, status: status, oldPath: oldPath,
                         diff: binary ? nil : AinkradFileDiff(path: path, original: "", hunks: hunks)))
             }
             path = nil
+            oldPath = nil
             status = .modified
             hunks = []
             binary = false
@@ -175,6 +182,12 @@ enum ReviewChanges {
                 status = .added
             } else if header == nil, line.hasPrefix("deleted file mode") {
                 status = .deleted
+            } else if header == nil, line.hasPrefix("rename from ") {
+                // A staged rename (`git mv`): both paths, so Commit takes the old one's deletion too (GD42).
+                status = .renamed
+                oldPath = gitPath(String(line.dropFirst(12)), sided: false)
+            } else if header == nil, line.hasPrefix("rename to ") {
+                path = gitPath(String(line.dropFirst(10)), sided: false)
             } else if header == nil, line.hasPrefix("+++ b/") || line.hasPrefix("+++ \"b/") {
                 path = gitPath(String(line.dropFirst(4)))
             } else if header == nil, line.hasPrefix("Binary files") {
@@ -242,8 +255,8 @@ enum ReviewChanges {
     }
 
     /// A path from a diff header (`b/x`, or `"b/x"` when git C-quoted it), without its side prefix or the tab git
-    /// puts after a name with a space (GD37).
-    static func gitPath(_ field: String) -> String {
+    /// puts after a name with a space (GD37). `sided: false` for the headers that name a path bare (`rename from x`).
+    static func gitPath(_ field: String, sided: Bool = true) -> String {
         var field = field.hasSuffix("\t") ? String(field.dropLast()) : field
         if field.hasPrefix("\""), field.hasSuffix("\""), field.count >= 2 {
             var bytes: [UInt8] = []
@@ -274,7 +287,7 @@ enum ReviewChanges {
             }
             field = String(decoding: bytes, as: UTF8.self)
         }
-        return field.hasPrefix("a/") || field.hasPrefix("b/") ? String(field.dropFirst(2)) : field
+        return sided && (field.hasPrefix("a/") || field.hasPrefix("b/")) ? String(field.dropFirst(2)) : field
     }
 
     /// Queued review comments as one message to the agent — each place (`file:line`), the line quoted, the

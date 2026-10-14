@@ -45,6 +45,8 @@ final class LiveThread {
     private(set) var sentImages: [Int: [String]] = [:]
     /// The images that went with the last message, so one nothing answered gets them back (GD30).
     private var lastSentImages: [ImageAttachment] = []
+    /// Why the last file dropped or picked wasn't attached, for the composer to say once (GD47).
+    var attachProblem: String?
     /// Review comments on lines of the agent's changes, sent ahead of the next message.
     var reviewComments: [ReviewComment] = []
     /// Set from spawning the agent until it first answers (E6 B): the transcript lists the startup steps.
@@ -104,7 +106,13 @@ final class LiveThread {
         self.effort = startOptions.effort
         self.makeEngine = makeEngine
         for (index, entry) in entries.enumerated() {
-            if case .tool(let call) = entry { toolIndex[call.id] = index }
+            guard case .tool(var call) = entry else { continue }
+            toolIndex[call.id] = index
+            // Stored history has no CLI running it: a tool with no result was cut off when that CLI died (GD46).
+            if call.result == nil {
+                call.result = ToolOutput(content: Self.interrupted, isError: true)
+                self.entries[index] = .tool(call)
+            }
         }
     }
 
@@ -289,6 +297,9 @@ final class LiveThread {
         self.failure = failure
     }
 
+    /// A tool card whose CLI went away before it finished.
+    static let interrupted = "Interrupted — the agent exited"
+
     static func limitNote(_ agent: String) -> String { "\(agent) did not answer — the plan’s usage limit was reached." }
 
     /// Puts the last message back in the composer, with its images, when nothing answered it. `removing` takes
@@ -376,7 +387,7 @@ final class LiveThread {
             // Nothing runs once the CLI is gone, so no card may stay "running…".
             for (_, index) in toolIndex {
                 guard case .tool(var call) = entries[index], call.result == nil else { continue }
-                call.result = ToolOutput(content: "Interrupted — the agent exited", isError: true)
+                call.result = ToolOutput(content: Self.interrupted, isError: true)
                 entries[index] = .tool(call)
             }
             // A CLI that dies mid-turn often leaves no stderr (crash, kill, OOM);
@@ -384,7 +395,9 @@ final class LiveThread {
             if status == .working || status == .needsYou {
                 status = stopping ? .idle : .failed("The agent exited mid-turn (code \(code))")
             }
-            guard code != 0, !stopping, wasStarting || wasBusy else { return }
+            // Any exit mid-turn is a failure, code 0 too: OpenCode's closed event stream (its server died) reads as
+            // a clean exit (GD45). Otherwise a clean exit is just the CLI ending.
+            guard !stopping, wasBusy || (wasStarting && code != 0) else { return }
             if case .failed = status {} else { status = .failed("The agent exited (code \(code))") }
             let output = errorOutput.isEmpty ? failure?.output ?? "" : errorOutput
             fail(EngineFailure(code: code, after: elapsed, output: output, beforeStart: wasStarting))

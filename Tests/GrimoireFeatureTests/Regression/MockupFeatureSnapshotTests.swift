@@ -76,15 +76,18 @@ final class MockupFeatureSnapshotTests: XCTestCase {
             "            if isSelected { Capsule().glassEffect(.regular) }", "        }",
             "        .contentShape(Rectangle())",
         ]
-        try (before + edited + ["}"]).joined(separator: "\n").write(to: file, atomically: true, encoding: .utf8)
         let input: JSONValue = [
             "file_path": .string(file.path),
             "old_string": "        .padding(.horizontal, skin.size.s8)\n        .overlay(alignment: .bottom) { Rectangle().frame(height: 1) }\n        .contentShape(Rectangle())",
             "new_string": .string(edited.joined(separator: "\n")),
         ]
-        Snapshot.assertMatches(
-            EditDiffBlock(diff: ToolSummary.editDiff(input), path: file.path).padding(12), named: "edit-line-numbers",
-            size: CGSize(width: 640, height: 200))
+        // A CRLF file numbers the same as an LF one (GD49): same golden.
+        for newline in ["\n", "\r\n"] {
+            try (before + edited + ["}"]).joined(separator: newline).write(to: file, atomically: true, encoding: .utf8)
+            Snapshot.assertMatches(
+                EditDiffBlock(diff: ToolSummary.editDiff(input), path: file.path).padding(12), named: "edit-line-numbers",
+                size: CGSize(width: 640, height: 200))
+        }
     }
 
     /// Mockup 3's composer: image chips with ✕, the strip's Effort and 📎.
@@ -137,5 +140,30 @@ final class MockupFeatureSnapshotTests: XCTestCase {
         review.commitMessage = "fix(sidebar): glass capsule selection"
         Snapshot.assertMatches(
             ReviewPane(review: review, close: {}), named: "review-hunks-comment", size: CGSize(width: 440, height: 520))
+    }
+
+    /// GD42: a staged rename (`git mv`) reads as one, old path → new path.
+    func testReviewListsARename() async throws {
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-rename-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent("Sidebar"), withIntermediateDirectories: true)
+        let environment = CLILocator.loginEnvironment()
+        let git = Git(directory: repo.path, environment: environment)
+        try "struct Row {}\n".write(to: repo.appendingPathComponent("Sidebar/Row.swift"), atomically: true, encoding: .utf8)
+        for step in [["init", "-q"], ["add", "."], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a"]] {
+            _ = try await git.run(step)
+        }
+        _ = try await git.run(["mv", "Sidebar/Row.swift", "Sidebar/SidebarRow.swift"])
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: repo), makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        review.scope = .uncommitted
+        // The pane reloads from git as it appears; awaiting (not the run loop) lets that land.
+        let (window, hosting) = Snapshot.host(ReviewPane(review: review, close: {}), size: CGSize(width: 440, height: 300))
+        defer { window.close() }
+        for _ in 0..<200 where review.isLoading || review.files.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        Snapshot.settleLayout(hosting, for: 0.2)
+        XCTAssertEqual(review.files.first?.oldPath, "Sidebar/Row.swift")
+        Snapshot.assertMatches(hosted: hosting, named: "review-rename")
     }
 }

@@ -81,13 +81,13 @@ enum Attach {
     /// The 📎 panel: pick images to attach.
     static func choose(into live: LiveThread) {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = ImageAttachment.attachableTypes
         panel.allowsMultipleSelection = true
         panel.message = "Choose images to send with your next message"
         panel.begin { response in
             guard response == .OK else { return }
             let urls = panel.urls
-            Task { @MainActor in for url in urls { add(await ImageAttachment.load(url), to: live) } }
+            Task { @MainActor in for url in urls { add(await ImageAttachment.load(url), url.lastPathComponent, to: live) } }
         }
     }
 
@@ -99,14 +99,14 @@ enum Attach {
                 accepted = true
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url else { return }
-                    Task { @MainActor in add(await ImageAttachment.load(url), to: live) }
+                    Task { @MainActor in add(await ImageAttachment.load(url), url.lastPathComponent, to: live) }
                 }
             } else if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
                 accepted = true
                 let name = provider.suggestedName.map { $0 + ".png" } ?? "Dropped image.png"
                 provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, _ in
                     guard let data else { return }
-                    Task { @MainActor in add(await ImageAttachment.load(data, name: name), to: live) }
+                    Task { @MainActor in add(await ImageAttachment.load(data, name: name), name, to: live) }
                 }
             }
         }
@@ -116,20 +116,22 @@ enum Attach {
     /// ⌘V: image files copied in Finder, or image data with no text (a screenshot). True when it attached.
     static func paste(_ pasteboard: NSPasteboard, into live: LiveThread) -> Bool {
         let urls = (pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? [])
-            .filter { UTType(filenameExtension: $0.pathExtension)?.conforms(to: .image) == true }
+            .filter(ImageAttachment.canAttach)
         if !urls.isEmpty {
-            Task { for url in urls { add(await ImageAttachment.load(url), to: live) } }
+            Task { for url in urls { add(await ImageAttachment.load(url), url.lastPathComponent, to: live) } }
             return true
         }
         guard pasteboard.string(forType: .string) == nil,
             let data = pasteboard.data(forType: .png) ?? pasteboard.data(forType: .tiff)
         else { return false }
-        Task { add(await ImageAttachment.load(data, name: "Pasted image.png"), to: live) }
+        Task { add(await ImageAttachment.load(data, name: "Pasted image.png"), "Pasted image.png", to: live) }
         return true
     }
 
-    private static func add(_ attachment: ImageAttachment?, to live: LiveThread) {
-        if let attachment { live.attachments.append(attachment) }
+    /// Attaches it, or says why `name` wasn't attached instead of dropping it silently (GD47).
+    private static func add(_ attachment: ImageAttachment?, _ name: String, to live: LiveThread) {
+        guard let attachment else { return live.attachProblem = ImageAttachment.problem(name) }
+        live.attachments.append(attachment)
     }
 }
 

@@ -61,7 +61,8 @@ struct FileLocation: Equatable {
     static func line(of lines: [String], in file: String) -> Int? {
         let needle = lines.drop { $0.trimmingCharacters(in: .whitespaces).isEmpty }
         guard let first = needle.first else { return nil }
-        let haystack = file.components(separatedBy: "\n")
+        // Any line break, CRLF included: a "\n" split left "\r" on each line of a CRLF file, so nothing matched (GD49).
+        let haystack = file.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline).map(String.init)
         for index in haystack.indices where haystack[index] == first {
             if Array(haystack[index...].prefix(needle.count)) == Array(needle) {
                 return index + 1 - (lines.count - needle.count)

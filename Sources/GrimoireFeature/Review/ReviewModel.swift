@@ -128,7 +128,7 @@ final class ReviewModel {
     /// Discards a file's uncommitted changes (tracked files only).
     func revert(_ file: FileChange) async {
         guard canRevertNow else { return }
-        await perform(["restore", "--staged", "--worktree", "--", file.path])
+        await perform(["restore", "--staged", "--worktree", "--"] + file.paths)
     }
 
     /// Commits exactly the files the pane shows (this turn, the thread, or every uncommitted change) — never
@@ -137,7 +137,9 @@ final class ReviewModel {
         let message = commitMessage.trimmingCharacters(in: .whitespacesAndNewlines)
         let paths = files.map(\.path)
         guard !message.isEmpty, !paths.isEmpty else { return }
-        guard await perform(["add", "-A", "--"] + paths), await perform(["commit", "-m", message, "--"] + paths)
+        // A rename's old path goes to the commit, which takes its deletion; `add` would refuse it, being gone (GD42).
+        guard await perform(["add", "-A", "--"] + paths),
+            await perform(["commit", "-m", message, "--"] + files.flatMap(\.paths))
         else { return }
         commitMessage = ""
     }
