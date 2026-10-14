@@ -138,4 +138,29 @@ final class MockupFeatureSnapshotTests: XCTestCase {
         Snapshot.assertMatches(
             ReviewPane(review: review, close: {}), named: "review-hunks-comment", size: CGSize(width: 440, height: 520))
     }
+
+    /// GD42: a staged rename (`git mv`) reads as one, old path → new path.
+    func testReviewListsARename() async throws {
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-rename-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent("Sidebar"), withIntermediateDirectories: true)
+        let environment = CLILocator.loginEnvironment()
+        let git = Git(directory: repo.path, environment: environment)
+        try "struct Row {}\n".write(to: repo.appendingPathComponent("Sidebar/Row.swift"), atomically: true, encoding: .utf8)
+        for step in [["init", "-q"], ["add", "."], ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a"]] {
+            _ = try await git.run(step)
+        }
+        _ = try await git.run(["mv", "Sidebar/Row.swift", "Sidebar/SidebarRow.swift"])
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: repo), makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        review.scope = .uncommitted
+        // The pane reloads from git as it appears; awaiting (not the run loop) lets that land.
+        let (window, hosting) = Snapshot.host(ReviewPane(review: review, close: {}), size: CGSize(width: 440, height: 300))
+        defer { window.close() }
+        for _ in 0..<200 where review.isLoading || review.files.isEmpty { try await Task.sleep(for: .milliseconds(20)) }
+        Snapshot.settleLayout(hosting, for: 0.2)
+        XCTAssertEqual(review.files.first?.oldPath, "Sidebar/Row.swift")
+        Snapshot.assertMatches(hosted: hosting, named: "review-rename")
+    }
 }

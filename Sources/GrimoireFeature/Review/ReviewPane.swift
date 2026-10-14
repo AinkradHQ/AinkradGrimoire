@@ -205,7 +205,7 @@ private struct FileCard: View {
                 Text(file.status.rawValue)
                     .font(AinkradFontResolver.font(size: 11, weight: .bold, mono: true, typography: typography))
                     .foregroundStyle(statusColor)
-                Text(file.path)
+                Text(file.oldPath.map { "\($0) → \(file.path)" } ?? file.path)
                     .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
                     .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
                     .lineLimit(1)
@@ -321,7 +321,7 @@ private struct FileCard: View {
 
     private var statusColor: Color {
         switch file.status {
-        case .modified, .added, .untracked: statusColors.success
+        case .modified, .added, .renamed, .untracked: statusColors.success
         case .deleted: statusColors.danger
         }
     }
