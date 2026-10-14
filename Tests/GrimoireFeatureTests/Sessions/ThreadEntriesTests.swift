@@ -88,6 +88,19 @@ struct ThreadEntriesTests {
             ToolSummary.result(name: "Read", input: .null, output: ToolOutput(content: "a\n\nc\n", isError: false))
                 == "3 lines")
         #expect(ToolSummary.lines("\n") == [""])
+        // GD38: agy's PTY and `curl -i` end lines with CRLF; a lone CR redraws a progress line, which shows its last state.
+        #expect(
+            ToolSummary.result(name: "Bash", input: .null, output: ToolOutput(content: "a\r\nb\r\nc\r\nd\r\n", isError: false))
+                == "4 lines")
+        #expect(ToolSummary.lines("a\r\nb\r\n\r\nc") == ["a", "b", "", "c"])
+        #expect(ToolSummary.lines("10%\r50%\r100%\ndone\n") == ["100%", "done"])
+        #expect(ToolSummary.lines("10%\r100%\r") == ["100%"])
+        #expect(
+            ToolSummary.result(name: "Grep", input: .null, output: ToolOutput(content: "a:1\r\nb:2\r\n", isError: false))
+                == "2 matches")
+        #expect(
+            ToolSummary.result(name: "Bash", input: .null, output: ToolOutput(content: "boom\r\nmore", isError: true))
+                == "boom")
         #expect(
             ToolSummary.result(name: "Write", input: ["content": "hello\n"], output: ToolOutput(content: "", isError: false))
                 == "1 line")
