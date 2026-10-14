@@ -67,6 +67,21 @@ struct LiveThreadTests {
         #expect(idle.failure == nil && idle.status == .idle)
     }
 
+    @Test("GD46: a tool left running by a CLI that died reopens as interrupted, not live")
+    func danglingToolOnReopen() {
+        let (live, _) = make([
+            .user("Run the test suite"),
+            .tool(ToolCall(id: "t1", name: "Bash", input: ["command": "make test", "description": "Run the test suite"])),
+        ])
+        guard case .tool(let call) = live.entries.last else {
+            Issue.record("no tool card")
+            return
+        }
+        #expect(call.result == ToolOutput(content: "Interrupted — the agent exited", isError: true))
+        #expect(live.activity == nil, "nothing is running")
+        #expect(live.status == .idle && !live.isRunning)
+    }
+
     @Test("sending starts the agent once, resuming the stored session, and shows the message")
     func send() {
         let (live, engine) = make([.user("earlier")])

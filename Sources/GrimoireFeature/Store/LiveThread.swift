@@ -104,7 +104,13 @@ final class LiveThread {
         self.effort = startOptions.effort
         self.makeEngine = makeEngine
         for (index, entry) in entries.enumerated() {
-            if case .tool(let call) = entry { toolIndex[call.id] = index }
+            guard case .tool(var call) = entry else { continue }
+            toolIndex[call.id] = index
+            // Stored history has no CLI running it: a tool with no result was cut off when that CLI died (GD46).
+            if call.result == nil {
+                call.result = ToolOutput(content: Self.interrupted, isError: true)
+                self.entries[index] = .tool(call)
+            }
         }
     }
 
@@ -289,6 +295,9 @@ final class LiveThread {
         self.failure = failure
     }
 
+    /// A tool card whose CLI went away before it finished.
+    static let interrupted = "Interrupted — the agent exited"
+
     static func limitNote(_ agent: String) -> String { "\(agent) did not answer — the plan’s usage limit was reached." }
 
     /// Puts the last message back in the composer, with its images, when nothing answered it. `removing` takes
@@ -376,7 +385,7 @@ final class LiveThread {
             // Nothing runs once the CLI is gone, so no card may stay "running…".
             for (_, index) in toolIndex {
                 guard case .tool(var call) = entries[index], call.result == nil else { continue }
-                call.result = ToolOutput(content: "Interrupted — the agent exited", isError: true)
+                call.result = ToolOutput(content: Self.interrupted, isError: true)
                 entries[index] = .tool(call)
             }
             // A CLI that dies mid-turn often leaves no stderr (crash, kill, OOM);
