@@ -27,16 +27,7 @@ enum Snapshot {
         // The goldens draw mono text in JetBrains Mono, which only the host registers: without it they depend on
         // whether the glass sweep happened to run first in the same process.
         _ = registeredFonts
-        let content =
-            view
-            .frame(width: size.width, height: size.height)
-            .background(skin.color(skin.palette.background))
-            .ainkradSkin(skin)
-            .ainkradHostTheme(theme)
-            .environment(\.ainkradTypography, AinkradTypography(fontFamilyName: nil))
-            .environment(\.ainkradMotionBudget, .frozen)
-            .environment(\.colorScheme, .dark)
-        let hosting = NSHostingView(rootView: content)
+        let hosting = NSHostingView(rootView: styled(view.frame(width: size.width, height: size.height)))
         hosting.frame = NSRect(origin: .zero, size: size)
         let window = NSWindow(
             contentRect: NSRect(origin: .zero, size: size), styleMask: [.borderless], backing: .buffered, defer: false)
@@ -46,6 +37,17 @@ enum Snapshot {
         window.contentView = hosting
         settleLayout(hosting, for: settle)
         return (window, hosting)
+    }
+
+    /// `view` in the snapshot's skin, theme, fonts and frozen motion.
+    static func styled(_ view: some View) -> some View {
+        view
+            .background(skin.color(skin.palette.background))
+            .ainkradSkin(skin)
+            .ainkradHostTheme(theme)
+            .environment(\.ainkradTypography, AinkradTypography(fontFamilyName: nil))
+            .environment(\.ainkradMotionBudget, .frozen)
+            .environment(\.colorScheme, .dark)
     }
 
     private static let registeredFonts: Void = GlassSweepTests.registerHostFonts()
