@@ -52,10 +52,20 @@ struct ReviewChangesTests {
         #expect(ReviewChanges.hunkHeader("not a header") == nil)
     }
 
-    @Test("untracked paths come from porcelain status")
+    @Test("untracked paths come from NUL-separated porcelain status, a rename's source skipped")
     func untracked() {
         #expect(
-            ReviewChanges.untracked(fromPorcelain: " M a.swift\n?? new.txt\n?? dir/b.md\n") == ["new.txt", "dir/b.md"])
+            ReviewChanges.untracked(fromPorcelain: " M a.swift\0R  ?? x\0?? old\0?? new 日本 😀.txt\0?? dir/b.md\0")
+                == ["new 日本 😀.txt", "dir/b.md"])
+    }
+
+    /// GD37: git C-quotes a name with `"` and tabs one with a space; both read back as the real path.
+    @Test("diff header paths are unquoted and lose git's trailing tab")
+    func quotedDiffPaths() {
+        #expect(ReviewChanges.gitPath("b/\u{fc}n\u{ef} c\u{f6}d\u{e9}.swift\t") == "ünï cödé.swift")
+        #expect(ReviewChanges.gitPath(#""b/q\"uo \303\274.txt""#) == "q\"uo ü.txt")
+        let diff = "diff --git \"a/q\\\"x.txt\" \"b/q\\\"x.txt\"\n--- \"a/q\\\"x.txt\"\n+++ \"b/q\\\"x.txt\"\n@@ -1 +1 @@\n-a\n+b\n"
+        #expect(ReviewChanges.parseUnifiedDiff(diff).map(\.path) == ["q\"x.txt"])
     }
 
     @Test("this turn: edits since your last message; whole thread: all of them, merged per file")
@@ -182,6 +192,46 @@ struct ReviewModelGitTests {
         #expect(review.commitMessage.isEmpty)
         #expect(
             try await git.run(["log", "-1", "--format=%s"]).trimmingCharacters(in: .whitespacesAndNewlines) == "add b")
+    }
+}
+
+@MainActor
+@Suite("ReviewModel non-ASCII paths (real git)")
+struct ReviewUnicodePathTests {
+    /// GD37: git quoted these names, so the pane listed escapes and Commit failed for every file.
+    @Test("a changed and an untracked non-ASCII file list as themselves and both commit")
+    func unicodePaths() async throws {
+        let repo = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("grimoire-uni-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        let environment = CLILocator.loginEnvironment()
+        let git = Git(directory: repo.path, environment: environment)
+        _ = try await git.run(["init", "-q", "-b", "feature"])
+        _ = try await git.run(["config", "user.email", "t@t"])
+        _ = try await git.run(["config", "user.name", "t"])
+        try "one\n".write(to: repo.appendingPathComponent("ünï cödé.swift"), atomically: true, encoding: .utf8)
+        _ = try await git.run(["add", "."])
+        _ = try await git.run(["commit", "-q", "-m", "root"])
+        try "two\n".write(to: repo.appendingPathComponent("ünï cödé.swift"), atomically: true, encoding: .utf8)
+        try "new\n".write(to: repo.appendingPathComponent("new 日本 😀.txt"), atomically: true, encoding: .utf8)
+
+        let live = LiveThread(
+            entries: [], startOptions: EngineStartOptions(workingDirectory: repo), makeEngine: { FakeEngine() })
+        let review = ReviewModel(live: live, workingDirectory: repo.path, environment: environment)
+        review.scope = .uncommitted
+        await review.load()
+        #expect(review.error == nil)
+        #expect(review.files.map(\.path) == ["ünï cödé.swift", "new 日本 😀.txt"])
+        #expect(review.files.map(\.status) == [.modified, .untracked])
+        #expect(review.files.first.map { ($0.added, $0.removed) } ?? (0, 0) == (1, 1))
+        #expect(FileManager.default.fileExists(atPath: ForgeLink.absolute(review.files[1].path, in: repo.path)))
+
+        review.commitMessage = "both"
+        await review.commit()
+        #expect(review.error == nil)
+        #expect(review.files.isEmpty)
+        let committed = try await git.run(["show", "--name-only", "--format=", "HEAD"]).split(separator: "\n")
+        #expect(Set(committed.map(String.init)) == ["ünï cödé.swift", "new 日本 😀.txt"])
     }
 }
 

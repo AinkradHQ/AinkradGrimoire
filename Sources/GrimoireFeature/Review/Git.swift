@@ -10,7 +10,10 @@ struct Git: Sendable {
         var errorDescription: String? { message }
     }
 
-    func run(_ arguments: [String]) async throws -> String { try await exec(["git"] + arguments) }
+    /// Paths come back as they are, not C-quoted octal (GD37): non-ASCII names list, commit and open as themselves.
+    func run(_ arguments: [String]) async throws -> String {
+        try await exec(["git", "-c", "core.quotePath=false"] + arguments)
+    }
     func gh(_ arguments: [String]) async throws -> String { try await exec(["gh"] + arguments) }
 
     /// stdout on exit 0; otherwise throws with stderr (or stdout) as the message.
