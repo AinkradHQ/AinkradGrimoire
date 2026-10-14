@@ -60,6 +60,8 @@ public final class OpenCodeEngine: HarnessEngine {
             for try await event in stream {
                 for decoded in wire.decode(event) { continuation.yield(decoded) }
             }
+            // The stream ends on its own only when `opencode serve` went away (stop() cancels): say so (GD45).
+            if !Task.isCancelled { continuation.yield(.error("opencode serve stopped — its event stream closed")) }
             finish(code: 0)
         } catch is CancellationError {
             finish(code: 0)

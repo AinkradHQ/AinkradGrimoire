@@ -48,6 +48,25 @@ struct LiveThreadTests {
         return (live, engine)
     }
 
+    @Test("GD45: an agent gone mid-turn with code 0 (OpenCode's server died) gets the failure card, Retry and the message back")
+    func cleanExitMidTurn() {
+        let (live, engine) = make()
+        live.send("Run the tests")
+        live.apply(.exited(code: 0))
+        #expect(live.failure?.code == 0)
+        #expect(live.failure?.restoredDraft == true)
+        #expect(live.draft == "Run the tests")
+        #expect(live.entries.isEmpty, "the unanswered message moves back to the composer")
+        live.retry()
+        #expect(engine.sent == ["Run the tests", "Run the tests"])
+
+        // Between turns a clean exit is just the CLI ending: no card.
+        let (idle, _) = make()
+        idle.ensureStarted()
+        idle.apply(.exited(code: 0))
+        #expect(idle.failure == nil && idle.status == .idle)
+    }
+
     @Test("sending starts the agent once, resuming the stored session, and shows the message")
     func send() {
         let (live, engine) = make([.user("earlier")])

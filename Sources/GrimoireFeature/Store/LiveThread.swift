@@ -384,7 +384,9 @@ final class LiveThread {
             if status == .working || status == .needsYou {
                 status = stopping ? .idle : .failed("The agent exited mid-turn (code \(code))")
             }
-            guard code != 0, !stopping, wasStarting || wasBusy else { return }
+            // Any exit mid-turn is a failure, code 0 too: OpenCode's closed event stream (its server died) reads as
+            // a clean exit (GD45). Otherwise a clean exit is just the CLI ending.
+            guard !stopping, wasBusy || (wasStarting && code != 0) else { return }
             if case .failed = status {} else { status = .failed("The agent exited (code \(code))") }
             let output = errorOutput.isEmpty ? failure?.output ?? "" : errorOutput
             fail(EngineFailure(code: code, after: elapsed, output: output, beforeStart: wasStarting))
