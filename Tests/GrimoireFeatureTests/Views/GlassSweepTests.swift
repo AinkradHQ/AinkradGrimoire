@@ -162,6 +162,59 @@ struct GlassSweepTests {
         }
     }
 
+    /// The transcript's cards side by side: a tool card in every status (succeeded,
+    /// counts, exit line, failed + hook note, running, waiting) and a user bubble with images.
+    @Test("shoot the transcript cards under Neon and Glass")
+    func shootTranscriptCards() throws {
+        let env = ProcessInfo.processInfo.environment
+        guard let out = env["AINKRAD_SWEEP_DIR"], let themes = env["AINKRAD_THEMES_DIR"] else {
+            print("SKIPPED: set AINKRAD_SWEEP_DIR and AINKRAD_THEMES_DIR — no transcript-cards sweep")
+            return
+        }
+        let glass = try Self.glassSkin(themes: URL(fileURLWithPath: themes))
+        Self.registerHostFonts()
+        try FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
+        let cwd = "/Users/me/Projects/Ainkrad"
+        let entries: [ThreadEntry] = [
+            .user("Make the sidebar selection a **glass capsule**"),
+            .tool(ToolCall(id: "1", name: "Read", input: ["file_path": .string("\(cwd)/Sources/Sidebar.swift")],
+                result: ToolOutput(content: "a\nb\nc", isError: false))),
+            .tool(ToolCall(id: "2", name: "Edit",
+                input: ["file_path": .string("\(cwd)/Sources/Sidebar.swift"), "old_string": "Capsule()", "new_string": "Glass()"],
+                result: ToolOutput(content: "ok", isError: false))),
+            .tool(ToolCall(id: "3", name: "Bash", input: ["command": "swift build"],
+                result: ToolOutput(content: "Build complete!", isError: false), duration: 48)),
+            .tool(ToolCall(id: "4", name: "Bash", input: ["command": "rtk swift test"],
+                result: ToolOutput(content: "error: 2 tests failed", isError: true), rewrittenFrom: "swift test")),
+            .tool(ToolCall(id: "5", name: "Grep", input: ["pattern": "glassCapsule"], result: nil)),
+            .tool(ToolCall(id: "6", name: "Bash", input: ["command": "git push -u origin feat/glass"], result: nil)),
+        ]
+        for (theme, skin) in [("neon", AinkradSkin.standard), ("glass", glass)] {
+            let view = VStack(alignment: .leading, spacing: 12) {
+                ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+                    EntryRow(
+                        entry: entry, images: entry == entries[0] ? ["mockup.png", "notes.png"] : [],
+                        workingDirectory: cwd, waitingToolID: "6")
+                }
+            }
+            .padding(20)
+            .frame(width: 820, height: 640, alignment: .top)
+            .background(skin.color(skin.palette.background))
+            .environment(\.ainkradTheme, HostThemeTokens(skin: skin))
+            .environment(
+                \.ainkradStatusColors,
+                AinkradStatusColors(
+                    success: skin.color(skin.palette.success), warning: skin.color(skin.palette.warning),
+                    danger: skin.color(skin.palette.danger)))
+            .ainkradSkin(skin)
+            .environment(\.ainkradTypography, AinkradTypography(fontFamilyName: theme == "neon" ? "Exo 2" : nil))
+            .environment(\.colorScheme, .dark)
+            try LiveGlassCapture.shoot(
+                view, size: CGSize(width: 820, height: 640),
+                to: URL(fileURLWithPath: out).appendingPathComponent("transcript-cards-\(theme).png"))
+        }
+    }
+
     /// The host registers its bundled faces (Exo 2, JetBrains Mono) at launch;
     /// the test runner doesn't, so borrow the installed app's for true-to-app shots.
     static func registerHostFonts() {
