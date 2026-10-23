@@ -152,7 +152,7 @@ struct EntryRow: View {
     var body: some View {
         switch entry {
         case .user(let text):
-            UserBubble(text: text, images: images)
+            AinkradChatBubble(text: text, attachments: images)
         case .text(let text):
             // Inline code as cyan chips, fenced code quiet and syntax-coloured (mockup 10, GP21/GP46).
             AinkradMarkdownText(text: text)
@@ -166,58 +166,9 @@ struct EntryRow: View {
         case .thinking(let text):
             ThinkingRow(text: text)
         case .tool(let call):
-            ToolCard(call: call, workingDirectory: workingDirectory, isWaiting: call.id == waitingToolID)
+            ToolCallCard(call: call, workingDirectory: workingDirectory, isWaiting: call.id == waitingToolID)
         case .plan(let steps):
             PlanCard(steps: steps)
-        }
-    }
-}
-
-/// The person's message: a tinted card on the right, markdown rendered as replies are (GD1).
-private struct UserBubble: View {
-    let text: String
-    var images: [String] = []
-    @Environment(\.ainkradSkin) private var skin
-    @Environment(\.ainkradTheme) private var theme
-
-    var body: some View {
-        HStack {
-            Spacer(minLength: skin.size.s120)
-            VStack(alignment: .trailing, spacing: skin.size.s8) {
-                // The images sent with it, as the composer's chips showed them (mockup 1's 🖼 chip).
-                if !images.isEmpty {
-                    FlowLayout(spacing: skin.size.s6) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { _, name in
-                            AinkradChip(label: name, systemName: "photo").fixedSize()
-                        }
-                    }
-                }
-                message
-            }
-                .textSelection(.enabled)
-                .padding(.horizontal, skin.size.s14)
-                .padding(.vertical, skin.size.s10)
-                .background(skin.shape(cut: AinkradRadius.md).fill(theme.accentPrimary.opacity(skin.opacity.o22)))
-                .overlay(
-                    skin.shape(cut: AinkradRadius.md).stroke(
-                        theme.accentPrimary.opacity(skin.opacity.o55), lineWidth: 1))
-        }
-    }
-
-    /// Prose stays one hugging `Text` (inline markdown only); a code block, list or table takes the kit's renderer.
-    @ViewBuilder
-    private var message: some View {
-        let blocks = AinkradMarkdownBlocks.parse(text)
-        if blocks.allSatisfy({ if case .paragraph = $0 { true } else { false } }) {
-            Text(
-                (try? AttributedString(
-                    markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-                    ?? AttributedString(text)
-            )
-            .font(skin.font(AinkradFontToken(sizeKey: "t13")))
-            .foregroundStyle(theme.foreground.opacity(skin.opacity.o95))
-        } else {
-            AinkradMarkdownText(blocks: blocks)
         }
     }
 }
@@ -255,122 +206,58 @@ private struct ThinkingRow: View {
     }
 }
 
-/// One tool call and its result. Edits show their diff and commands their
+/// One tool call on the kit's card. Edits show their diff and commands their
 /// output; reads and searches stay one line until clicked.
-private struct ToolCard: View {
+private struct ToolCallCard: View {
     let call: ToolCall
     let workingDirectory: String
     /// An approval for this call is pending: amber, "waiting for you", open.
     let isWaiting: Bool
-    @State private var isExpanded: Bool
-    @State private var hovering = false
-    @State private var isWide = true
     @Environment(\.ainkradSkin) private var skin
-    @Environment(\.ainkradTheme) private var theme
-    @Environment(\.ainkradStatusColors) private var statusColors
-    @Environment(\.ainkradTypography) private var typography
     @Environment(\.forgeOpener) private var opener
-    @Environment(\.ainkradReduceMotion) private var reduceMotion
-
-    init(call: ToolCall, workingDirectory: String, isWaiting: Bool) {
-        self.call = call
-        self.workingDirectory = workingDirectory
-        self.isWaiting = isWaiting
-        // Grep's hits show at rest (mockup 11); reads and other searches stay one line.
-        let hits = call.name == "Grep" && call.result.flatMap { GrepHits.parse($0.content) } != nil
-        _isExpanded = State(initialValue: hits || ["Edit", "MultiEdit", "Write", "Patch", "Bash"].contains(call.name))
-    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: skin.size.s8) {
-            header
-            if let original = call.rewrittenFrom {
-                // The header shows what runs (as the approval does); this is what the agent wrote (GD3).
-                Text("Rewritten by a hook from: \(original)")
-                    .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
-                    .foregroundStyle(skin.color(skin.text.faint))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
-            if isExpanded || isWaiting, let body = detail {
-                body
-            }
-            if isWaiting {
-                // Why it asks (mockup 4): where it runs, and that no allow rule covers it.
-                Text("Runs in \((workingDirectory as NSString).abbreviatingWithTildeInPath) · not covered by your allow rules")
-                    .font(skin.font(AinkradFontToken(sizeKey: "t11")))
-                    .foregroundStyle(skin.color(skin.text.faint))
-                    .lineLimit(2)
-            }
-        }
-        .padding(.horizontal, skin.size.s12)
-        .padding(.vertical, skin.size.s8)
-        .frame(maxWidth: skin.size.s860, alignment: .leading)
-        .onGeometryChange(for: Bool.self) { $0.size.width >= skin.size.s560 } action: { isWide = $0 }
-        .cardSurface(theme.surface.opacity(skin.opacity.o85), rim: isWaiting ? statusColors.warning.opacity(skin.opacity.o60) : nil)
-    }
-
-    /// The expander, then "↗ Forge" beside it rather than inside it, so each is its own keyboard stop (GD28).
-    private var header: some View {
-        HStack(spacing: skin.size.s8) {
-            Button {  // design-lint: allow raw-control keyboard-reachable expander (kit has no disclosure row)
-                isExpanded.toggle()
-            } label: {
-                headerLabel
-            }
-            .buttonStyle(.plain)
-            // The full "↗ Open in Forge at 40" where the card is wide; the pill keeps its room at rest (GD28), so a
-            // narrow card keeps the short one and its argument stays readable.
+        // Grep's hits show at rest (mockup 11); reads and other searches stay one line.
+        let hits = call.name == "Grep" && call.result.flatMap { GrepHits.parse($0.content) } != nil
+        AinkradToolCard(
+            name: call.name,
+            argument: ToolSummary.argument(name: call.name, input: call.input, workingDirectory: workingDirectory),
+            status: status, result: result,
+            // The header shows what runs (as the approval does); this is what the agent wrote (GD3).
+            note: call.rewrittenFrom.map { "Rewritten by a hook from: \($0)" },
+            // Why it asks (mockup 4): where it runs, and that no allow rule covers it.
+            footnote: isWaiting
+                ? "Runs in \((workingDirectory as NSString).abbreviatingWithTildeInPath) · not covered by your allow rules"
+                : nil,
+            isInitiallyExpanded: hits || ["Edit", "MultiEdit", "Write", "Patch", "Bash"].contains(call.name)
+        ) {
+            if let detail { detail }
+        } accessory: { state in
+            // "↗ Forge" beside the expander, its own keyboard stop (GD28); the full "↗ Open in Forge at 40" where
+            // the card is wide, so a narrow card keeps its argument readable.
             ForgeHeaderPill(
-                isHovered: hovering, label: isWide ? ForgeTarget.label(for: call) : "↗ Forge",
+                isHovered: state.isHovered, label: state.isWide ? ForgeTarget.label(for: call) : "↗ Forge",
                 action: ForgeTarget.action(for: call, opener: opener))
-            resultLabel
-                .contentShape(Rectangle())
-                .onTapGesture { isExpanded.toggle() }
         }
-        .onHover { hovering = $0 }
-        .animation(reduceMotion ? nil : skin.animation(skin.motion.hover), value: hovering)
     }
 
-    private var headerLabel: some View {
-        HStack(spacing: skin.size.s8) {
-            Circle().fill(dotColor).frame(width: skin.size.s7, height: skin.size.s7)
-            Text(call.name)
-                .font(skin.font(AinkradFontToken(sizeKey: "t13", weight: "semibold")))
-                .foregroundStyle(theme.foreground.opacity(skin.opacity.o90))
-                .fixedSize()  // never "Re ad" (GD26): the argument gives way instead
-            Text(ToolSummary.argument(name: call.name, input: call.input, workingDirectory: workingDirectory))
-                .font(AinkradFontResolver.font(size: 11, mono: true, typography: typography))
-                .foregroundStyle(skin.color(skin.text.muted))
-                .lineLimit(1)
-                .truncationMode(.middle)
-            Spacer(minLength: skin.size.s8)
-        }
-        .contentShape(Rectangle())
+    private var status: AinkradToolCardStatus {
+        if isWaiting { return .waiting }
+        guard let result = call.result else { return .running }
+        return result.isError ? .failed : .succeeded
     }
 
-    /// "waiting for you", an edit's green +4 / red −2, a command's green "exit 0 · 48s", else the summary.
-    @ViewBuilder private var resultLabel: some View {
-        let font = skin.font(AinkradFontToken(sizeKey: "t11", monospacedDigits: true))
-        if isWaiting {
-            Text("waiting for you").font(font).foregroundStyle(statusColors.warning)
-        } else if call.result?.isError != true, let counts = ToolSummary.counts(name: call.name, input: call.input),
-            call.result != nil
+    /// An edit's +4 / −2, a command's "exit 0 · 48s", else the summary.
+    private var result: AinkradToolCardResult {
+        if let output = call.result, !output.isError,
+            let counts = ToolSummary.counts(name: call.name, input: call.input)
         {
-            HStack(spacing: skin.size.s4) {
-                Text("+\(counts.added)").foregroundStyle(statusColors.success)
-                Text("−\(counts.removed)").foregroundStyle(statusColors.danger)
-            }
-            .font(font)
-        } else if call.name == "Bash", let result = call.result, !result.isError {
-            Text(["exit 0", call.duration.map(StatusTime.short)].compactMap { $0 }.joined(separator: " · "))
-                .font(font).foregroundStyle(statusColors.success).lineLimit(1)
-        } else {
-            Text(ToolSummary.result(name: call.name, input: call.input, output: call.result))
-                .font(font)
-                .foregroundStyle(call.result?.isError == true ? statusColors.danger : skin.color(skin.text.faint))
-                .lineLimit(1)
+            return .counts(added: counts.added, removed: counts.removed)
         }
+        if call.name == "Bash", let output = call.result, !output.isError {
+            return .success(["exit 0", call.duration.map(StatusTime.short)].compactMap { $0 }.joined(separator: " · "))
+        }
+        return .summary(ToolSummary.result(name: call.name, input: call.input, output: call.result))
     }
 
     private var detail: AnyView? {
@@ -395,12 +282,6 @@ private struct ToolCard: View {
             guard let result = call.result, !result.content.isEmpty else { return nil }
             return AnyView(OutputBlock(text: result.content, maxLines: call.name == "Bash" ? 8 : 20))
         }
-    }
-
-    private var dotColor: Color {
-        if isWaiting { return statusColors.warning }
-        guard let result = call.result else { return theme.accentSecondary }
-        return result.isError ? statusColors.danger : statusColors.success
     }
 }
 
